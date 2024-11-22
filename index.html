@@ -26,21 +26,9 @@
             left: 0;
         }
 
-        /* 幅調整 */
-        .w20 {
-            width: 20%;
-        }
-
-        .w30 {
-            width: 30%;
-        }
-
-        .w40 {
+        /* テキストボックス幅調整 */
+        .text_w {
             width: 95px;
-        }
-
-        .w50 {
-            width: 50%;
         }
     </style>
 </head>
@@ -75,7 +63,7 @@
                             見通し
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">見通し入力</a></li>
                             <li><a class="dropdown-item" href="#">Another action</a></li>
                             <li>
                                 <hr class="dropdown-divider">
@@ -89,8 +77,8 @@
                             予定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li><a class="dropdown-item" href="#">予定入力</a></li>
+                            <li><a class="dropdown-item" href="#">CP差確認</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -103,8 +91,8 @@
                             月末見込み
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li><a class="dropdown-item" href="#">月末見込み入力</a></li>
+                            <li><a class="dropdown-item" href="#">予定差確認</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -117,8 +105,8 @@
                             概算
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li><a class="dropdown-item" href="monthly_actual/input_monthly_actual.html">実績入力</a></li>
+                            <li><a class="dropdown-item" href="monthly_actual/check_monthly_actual.html">予実確認</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -214,7 +202,7 @@
                 <tr class="table-warning">
                     <th scope="row">本社収入A</th>
                     <td align="right">
-                        <input class="form-control form-control-sm text-end w40" type="text"
+                        <input class="form-control form-control-sm text-end text_w" type="text"
                             aria-label=".form-control-sm" value="6,450,000">
                     </td>
                     <td class="text-end">6,300,000</td>
