@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CP</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <style>
+        .table td,
+        .table th {
+            vertical-align: middle;
+        }
+
+        .summary {
+            font-weight: bold;
+            background-color: #f8f9fa;
+        }
+
+        .text-end input {
+            text-align: right;
+            /* テキストボックス内も右寄せ */
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">採算表</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            CP
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">2020</a></li>
+                            <li><a class="dropdown-item" href="#">2021</a></li>
+                            <li><a class="dropdown-item" href="#">2022</a></li>
+                            <li><a class="dropdown-item" href="#">2023</a></li>
+                            <li><a class="dropdown-item" href="#">2024</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            見通し
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">見通し入力</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            予定
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">予定入力</a></li>
+                            <li><a class="dropdown-item" href="#">CP差確認</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            月末見込み
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">月末見込み入力</a></li>
+                            <li><a class="dropdown-item" href="#">予定差確認</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            概算
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="monthly_actual/input_monthly_actual.html">実績入力</a></li>
+                            <li><a class="dropdown-item" href="monthly_actual/check_monthly_actual.html">予実確認</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+            <div class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="bi bi-person-fill"></i>&nbsp;
+                            user name さん
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container my-5">
+        <h3>FY26_CP入力</h3>
+
+        <!-- 共通設定 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label for="responsibleCount" class="form-label">責任者 (人数)</label>
+                <input type="number" id="responsibleCount" class="form-control text-end" value="1"
+                    onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="memberCount" class="form-label">メンバー (人数)</label>
+                <input type="number" id="memberCount" class="form-control text-end" value="2" onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="responsibleOvertime" class="form-label">責任者（残業時間）</label>
+                <input type="number" id="responsibleOvertime" class="form-control text-end" value="20"
+                    onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="memberOvertime" class="form-label">メンバー（残業時間）</label>
+                <input type="number" id="memberOvertime" class="form-control text-end" value="10"
+                    onchange="updateCosts()">
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label for="operationUnitCost" class="form-label">運営費単価 (円)</label>
+                <input type="number" id="operationUnitCost" class="form-control text-end" value="17000"
+                    onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="operationStaffCount" class="form-label">運営費人数</label>
+                <input type="number" id="operationStaffCount" class="form-control text-end" value="320"
+                    onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="receptionUnitCost" class="form-label">受付対応費単価 (円/件)</label>
+                <input type="number" id="receptionUnitCost" class="form-control text-end" value="2000"
+                    onchange="updateCosts()">
+            </div>
+            <div class="col-md-3">
+                <label for="receptionCount" class="form-label">受付件数</label>
+                <input type="number" id="receptionCount" class="form-control text-end" value="30"
+                    onchange="updateCosts()">
+            </div>
+        </div>
+
+        <!-- 月別収支表 -->
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>月</th>
+                    <th>運営費 (円)</th>
+                    <th>受付対応費 (円)</th>
+                    <th>定時間 (時間)</th>
+                    <th>残業時間 (時間)</th>
+                    <th>賃率 (円/時間)</th>
+                    <th>労務費 (円)</th>
+                    <th>経費 (円)</th>
+                    <th>収入 (円)</th>
+                    <th>収支 (円)</th>
+                </tr>
+            </thead>
+            <tbody id="monthlyTable">
+            </tbody>
+            <tfoot>
+                <tr class="summary">
+                    <td>年間合計</td>
+                    <td id="totalOperationCost" class="text-end">0</td>
+                    <td id="totalReceptionCost" class="text-end">0</td>
+                    <td id="totalRegularHours" class="text-end">0</td>
+                    <td id="totalOvertimeHours" class="text-end">0</td>
+                    <td></td>
+                    <td id="totalStaffCost" class="text-end">0</td>
+                    <td id="totalExpense" class="text-end">0</td>
+                    <td id="totalIncome" class="text-end">0</td>
+                    <td id="totalBalance" class="text-end">0</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+        crossorigin="anonymous"></script>
+    <script>
+        const months = [
+            "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月", "1月", "2月", "3月"
+        ];
+
+        // 初期値設定
+        let responsibleCount = 1;
+        let memberCount = 2;
+        let responsibleOvertime = 20;
+        let memberOvertime = 10;
+        let operationUnitCost = 17000;
+        let operationStaffCount = 320;
+        let receptionUnitCost = 2000;
+        let receptionCount = 30;
+
+        const data = months.map(() => ({
+            hourlyRate: 4200, // 賃率
+            expense: 2400000, // その他経費
+        }));
+
+        function updateCosts() {
+            responsibleCount = parseFloat(document.getElementById('responsibleCount').value) || 0;
+            memberCount = parseFloat(document.getElementById('memberCount').value) || 0;
+            responsibleOvertime = parseFloat(document.getElementById('responsibleOvertime').value) || 0;
+            memberOvertime = parseFloat(document.getElementById('memberOvertime').value) || 0;
+            operationUnitCost = parseFloat(document.getElementById('operationUnitCost').value) || 0;
+            operationStaffCount = parseFloat(document.getElementById('operationStaffCount').value) || 0;
+            receptionUnitCost = parseFloat(document.getElementById('receptionUnitCost').value) || 0;
+            receptionCount = parseFloat(document.getElementById('receptionCount').value) || 0;
+
+            renderTable();
+        }
+
+        function renderTable() {
+            const tableBody = document.getElementById('monthlyTable');
+            tableBody.innerHTML = '';
+
+            let totalOperationCost = 0;
+            let totalReceptionCost = 0;
+            let totalRegularHours = 0;
+            let totalOvertimeHours = 0;
+            let totalStaffCost = 0;
+            let totalExpense = 0;
+            let totalIncome = 0;
+            let totalBalance = 0;
+
+            months.forEach((month, index) => {
+                const operationCost = operationUnitCost * operationStaffCount;
+                const receptionCost = receptionUnitCost * receptionCount;
+                const regularHours = 7.75 * 20 * (responsibleCount + memberCount);
+                const overtimeHours = (responsibleCount * responsibleOvertime) + (memberCount * memberOvertime);
+                const staffCost = (regularHours + overtimeHours) * data[index].hourlyRate;
+                const income = operationCost + receptionCost;
+                const expense = staffCost + data[index].expense;
+                const balance = income - expense;
+
+                totalOperationCost += operationCost;
+                totalReceptionCost += receptionCost;
+                totalRegularHours += regularHours;
+                totalOvertimeHours += overtimeHours;
+                totalStaffCost += staffCost;
+                totalExpense += expense;
+                totalIncome += income;
+                totalBalance += balance;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                <td>${month}</td>
+                <td class="text-end">${operationCost.toLocaleString()}</td>
+                <td class="text-end">${receptionCost.toLocaleString()}</td>
+                <td class="text-end">${regularHours.toLocaleString()}</td>
+                <td class="text-end">${overtimeHours.toLocaleString()}</td>
+                <td class="text-end">
+                    <input type="number" class="form-control text-end" value="${data[index].hourlyRate}" onchange="updateData(${index}, 'hourlyRate', this.value)">
+                </td>
+                <td class="text-end">${staffCost.toLocaleString()}</td>
+                <td class="text-end">
+                    <input type="number" class="form-control text-end" value="${data[index].expense}" onchange="updateData(${index}, 'expense', this.value)">
+                </td>
+                <td class="text-end">${income.toLocaleString()}</td>
+                <td class="text-end">${balance.toLocaleString()}</td>
+            `;
+                tableBody.appendChild(tr);
+            });
+
+            document.getElementById('totalOperationCost').innerText = totalOperationCost.toLocaleString();
+            document.getElementById('totalReceptionCost').innerText = totalReceptionCost.toLocaleString();
+            document.getElementById('totalRegularHours').innerText = totalRegularHours.toLocaleString();
+            document.getElementById('totalOvertimeHours').innerText = totalOvertimeHours.toLocaleString();
+            document.getElementById('totalStaffCost').innerText = totalStaffCost.toLocaleString();
+            document.getElementById('totalExpense').innerText = totalExpense.toLocaleString();
+            document.getElementById('totalIncome').innerText = totalIncome.toLocaleString();
+            document.getElementById('totalBalance').innerText = totalBalance.toLocaleString();
+        }
+
+        function updateData(index, field, value) {
+            data[index][field] = parseFloat(value) || 0;
+            renderTable();
+        }
+
+        // 初期表示
+        renderTable();
+    </script>
+</body>
+
+</html>
