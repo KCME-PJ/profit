@@ -30,11 +30,13 @@
         }
 
         /* テキストボックス幅調整 */
-        input[type="text"] {
+        input[type="number"] {
             width: 100%;
             /* テキストボックスをセル幅一杯に */
             box-sizing: border-box;
             /* パディングも幅に含める */
+            text-align: right;
+            /* 入力欄の右寄せ */
         }
     </style>
 </head>
@@ -145,11 +147,12 @@
                     <th style="width: 200px;">勘定科目/詳細</th>
                     <th class="text-center" style="width: 100px;">CP</th>
                     <th class="text-center" style="width: 100px;">予定</th>
+                    <th class="text-center" style="width: 100px;">月末見込み</th>
                     <th class="text-center" style="width: 100px;">実績</th>
                 </tr>
             </thead>
             <tbody>
-                <!-- Parent Row -->
+                <!-- Parent Row: 雑給 -->
                 <tr>
                     <td>
                         <button class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
@@ -158,88 +161,44 @@
                         </button>
                         雑給
                     </td>
-                    <td class="text-end">430,000</td>
-                    <td class="text-end">400,000</td>
-                    <td class="text-end">詳細の金額を入力してください</td>
+                    <td class="text-end" id="total-zatsukyu">0</td>
                 </tr>
-                <!-- Collapsible Child Rows -->
+                <!-- Child Rows: 派遣A -->
                 <tr class="collapse show" id="child1">
                     <td class="ps-4">派遣A</td>
-                    <td class="text-end">
-                        <font color="blue">170,000</font>
-                    </td>
-                    <td class="text-end">
-                        <font color="blue">150,000</font>
-                    </td>
-                    <td align="right">
-                        <input class="form-control form-control-sm text-end" type="text" aria-label=".form-control-sm"
-                            value="">
+                    <td class="text-end" id="total-hakenA">0</td>
+                </tr>
+                <tr class="collapse show" id="child1">
+                    <td class="ps-5">本社</td>
+                    <td>
+                        <input class="form-control form-control-sm input-value" type="number" data-parent="hakenA"
+                            data-grandparent="zatsukyu" value="">
                     </td>
                 </tr>
                 <tr class="collapse show" id="child1">
-                    <td class="ps-4">派遣B</td>
-                    <td class="text-end">
-                        <font color="blue">260,000</font>
-                    </td>
-                    <td class="text-end">
-                        <font color="blue">250,000</font>
-                    </td>
-                    <td align="right">
-                        <input class="form-control form-control-sm text-end" type="text" aria-label=".form-control-sm"
-                            value="">
-                    </td>
-                </tr>
-                <!-- Another Parent Row -->
-                <tr>
+                    <td class="ps-5">大阪営業所</td>
                     <td>
-                        <button class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
-                            data-bs-target="#child2">
-                            <i class="bi bi-dash icon-small"></i>
-                        </button>
-                        福利厚生
-                    </td>
-                    <td class="text-end">50,000</td>
-                    <td class="text-end">64,000</td>
-                    <td class="text-end">63,000</td>
-                </tr>
-                <!-- Collapsible Child Rows -->
-                <tr class="collapse show" id="child2">
-                    <td class="ps-4">福利厚生保険</td>
-                    <td class="text-end">
-                        <font color="blue">7,000</font>
-                    </td>
-                    <td class="text-end">
-                        <font color="blue">7,000</font>
-                    </td>
-                    <td align="right">
-                        <input class="form-control form-control-sm text-end" type="text" aria-label=".form-control-sm"
-                            value="10,000">
+                        <input class="form-control form-control-sm input-value" type="number" data-parent="hakenA"
+                            data-grandparent="zatsukyu" value="">
                     </td>
                 </tr>
-                <tr class="collapse show" id="child2">
-                    <td class="ps-4">研修費</td>
-                    <td class="text-end">
-                        <font color="blue">37,000</font>
-                    </td>
-                    <td class="text-end">
-                        <font color="blue">49,000</font>
-                    </td>
-                    <td align="right">
-                        <input class="form-control form-control-sm text-end" type="text" aria-label=".form-control-sm"
-                            value="43,000">
+                <!-- Child Rows: 派遣B -->
+                <tr class="collapse show" id="child1">
+                    <td class="ps-4">派遣B</td>
+                    <td class="text-end" id="total-hakenB">0</td>
+                </tr>
+                <tr class="collapse show" id="child1">
+                    <td class="ps-5">本社</td>
+                    <td>
+                        <input class="form-control form-control-sm input-value" type="number" data-parent="hakenB"
+                            data-grandparent="zatsukyu" value="">
                     </td>
                 </tr>
-                <tr class="collapse show" id="child2">
-                    <td class="ps-4">定期健康診断</td>
-                    <td class="text-end">
-                        <font color="blue">6,000</font>
-                    </td>
-                    <td class="text-end">
-                        <font color="blue">8,000</font>
-                    </td>
-                    <td align="right">
-                        <input class="form-control form-control-sm text-end" type="text" aria-label=".form-control-sm"
-                            value="10,000">
+                <tr class="collapse show" id="child1">
+                    <td class="ps-5">大阪営業所</td>
+                    <td>
+                        <input class="form-control form-control-sm input-value" type="number" data-parent="hakenB"
+                            data-grandparent="zatsukyu" value="">
                     </td>
                 </tr>
             </tbody>
@@ -263,6 +222,52 @@
                 }
             });
 
+        });
+    </script>
+    <script>
+        // Update totals dynamically
+        function updateTotals() {
+            const parentTotals = {}; // Track parent totals (e.g., hakenA, hakenB)
+            const grandParentTotals = {}; // Track grandparent totals (e.g., zatsukyu)
+
+            document.querySelectorAll('.input-value').forEach(input => {
+                const parent = input.dataset.parent;
+                const grandparent = input.dataset.grandparent;
+                const value = parseFloat(input.value) || 0;
+
+                // Update parent totals
+                if (!parentTotals[parent]) {
+                    parentTotals[parent] = 0;
+                }
+                parentTotals[parent] += value;
+
+                // Update grandparent totals
+                if (!grandParentTotals[grandparent]) {
+                    grandParentTotals[grandparent] = 0;
+                }
+                grandParentTotals[grandparent] += value;
+            });
+
+            // Update parent total cells
+            for (const [parent, total] of Object.entries(parentTotals)) {
+                const totalCell = document.getElementById(`total-${parent}`);
+                if (totalCell) {
+                    totalCell.textContent = total.toLocaleString(); // Format as number
+                }
+            }
+
+            // Update grandparent total cells
+            for (const [grandparent, total] of Object.entries(grandParentTotals)) {
+                const totalCell = document.getElementById(`total-${grandparent}`);
+                if (totalCell) {
+                    totalCell.textContent = total.toLocaleString(); // Format as number
+                }
+            }
+        }
+
+        // Add event listeners to input fields
+        document.querySelectorAll('.input-value').forEach(input => {
+            input.addEventListener('input', updateTotals);
         });
     </script>
 </body>
