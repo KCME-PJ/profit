@@ -133,8 +133,8 @@ session_start(); // セッション開始
             <div class="mb-3">
                 <label for="accountIdentifier" class="form-label">一意識別子</label>
                 <input type="text" class="form-control" id="accountIdentifier" name="account_identifier"
-                    placeholder="例: zatsukyu" required>
-                <div class="form-text">英数字で入力してください（例: zatsukyu）。</div>
+                    pattern="[a-zA-Z0-9]+" title="一意識別子は半角英数字のみ入力可能です" required>
+                <div class="form-text">半角英数字で入力してください（例: zatsukyu）。</div>
             </div>
             <div class="mb-3">
                 <label for="note" class="form-label">説明 (任意)</label>

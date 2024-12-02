@@ -196,7 +196,7 @@
                             <div class="mb-3">
                                 <label for="editAccountIdentifier-<?= $account['id'] ?>" class="form-label">一意識別子</label>
                                 <input type="text" class="form-control" id="editAccountIdentifier-<?= $account['id'] ?>" name="account_identifier"
-                                    value="<?= htmlspecialchars($account['identifier']) ?>" required>
+                                    value="<?= htmlspecialchars($account['identifier']) ?>" pattern="[a-zA-Z0-9]+" title="半角英数字のみを入力してください" required>
                             </div>
                             <div class="mb-3">
                                 <label for="editDescription-<?= $account['id'] ?>" class="form-label">説明 (任意)</label>
@@ -237,6 +237,21 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
         crossorigin="anonymous">
+    </script>
+    <script>
+        document.querySelectorAll('.edit-button').forEach(button => {
+            button.addEventListener('click', function() {
+                const id = this.getAttribute('data-id');
+                const name = this.getAttribute('data-name');
+                const identifier = this.getAttribute('data-identifier');
+                const note = this.getAttribute('data-note');
+
+                document.getElementById('editAccountId').value = id;
+                document.getElementById('editAccountName').value = name;
+                document.getElementById('editAccountIdentifier').value = identifier;
+                document.getElementById('editNote').value = note;
+            });
+        });
     </script>
     <script>
         const deleteModal = document.getElementById('deleteModal');
