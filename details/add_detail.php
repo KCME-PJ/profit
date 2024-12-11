@@ -40,7 +40,7 @@ try {
     $stmt->execute();
 
     $_SESSION['success'] = '詳細が正常に登録されました。';
-    header('Location: detail.php');
+    header('Location: detail_list.php');
     exit;
 } catch (Exception $e) {
     $_SESSION['error'] = $e->getMessage();
