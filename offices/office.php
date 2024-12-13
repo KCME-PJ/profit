@@ -18,7 +18,7 @@ require_once '../includes/database.php';
 <body>
     <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">採算表</a>
+            <a class="navbar-brand" href="../index.html">採算表</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
                 aria-label="Toggle navigation">
@@ -103,8 +103,9 @@ require_once '../includes/database.php';
                             勘定科目設定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./account/account_list.php">勘定科目</a></li>
-                            <li><a class="dropdown-item" href="#">詳細</a></li>
+                            <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
+                            <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
+                            <li><a class="dropdown-item" href="./office_list.php">営業所</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>

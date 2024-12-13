@@ -100,6 +100,7 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./account.php">勘定科目登録</a></li>
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
+                            <li><a class="dropdown-item" href="../offices/office_list.php">営業所</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>

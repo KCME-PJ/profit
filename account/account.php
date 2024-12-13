@@ -17,7 +17,7 @@ session_start(); // セッション開始
 <body>
     <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">採算表</a>
+            <a class="navbar-brand" href="../index.html">採算表</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
                 aria-label="Toggle navigation">
@@ -89,6 +89,21 @@ session_start(); // セッション開始
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="monthly_actual/input_monthly_actual.html">実績入力</a></li>
                             <li><a class="dropdown-item" href="monthly_actual/check_monthly_actual.html">予実確認</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            勘定科目設定
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
+                            <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
+                            <li><a class="dropdown-item" href="../offices/office_list.php">営業所</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
