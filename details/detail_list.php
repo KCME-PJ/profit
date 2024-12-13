@@ -10,9 +10,10 @@ try {
     $dbh = getDb();
 
     // details テーブルのデータを取得
-    $sql = "SELECT details.id, details.name AS detail_name, details.identifier, details.note, details.account_id, accounts.name AS account_name
+    $sql = "SELECT details.id, details.name AS detail_name, details.identifier, details.note, details.account_id, details.office_id, accounts.name AS account_name, offices.name AS office_name
             FROM details
             JOIN accounts ON details.account_id = accounts.id
+            LEFT JOIN offices ON details.office_id = offices.id
             ORDER BY details.id ASC";
     $stmt = $dbh->prepare($sql);
     $stmt->execute();
@@ -23,6 +24,12 @@ try {
     $stmtAccounts = $dbh->prepare($sqlAccounts);
     $stmtAccounts->execute();
     $accounts = $stmtAccounts->fetchAll(PDO::FETCH_ASSOC);
+
+    // offices テーブルのデータを取得
+    $sqlOffices = "SELECT id, name FROM offices ORDER BY name ASC";
+    $stmtOffices = $dbh->prepare($sqlOffices);
+    $stmtOffices->execute();
+    $offices = $stmtOffices->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     die("エラー: " . $e->getMessage());
 }
@@ -154,8 +161,8 @@ try {
             </div>
         </div>
     </nav>
-    <div class="container mt-5">
-        <h1 class="mb-4">詳細リスト</h1>
+    <div class="container mt-3">
+        <h2 class="mb-4">詳細リスト</h2>
         <table class="table table-bordered">
             <thead>
                 <tr>
@@ -164,6 +171,7 @@ try {
                     <th>一意識別子</th>
                     <th>説明</th>
                     <th>勘定科目</th>
+                    <th>営業所</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -175,6 +183,7 @@ try {
                         <td><?= htmlspecialchars($detail['identifier']) ?></td>
                         <td><?= htmlspecialchars($detail['note']) ?></td>
                         <td><?= htmlspecialchars($detail['account_name']) ?></td>
+                        <td><?= htmlspecialchars($detail['office_name']) ?></td>
                         <td>
                             <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-<?= $detail['id'] ?>">編集</button>
                             <form action="delete_detail.php" method="POST" class="d-inline">
@@ -221,6 +230,18 @@ try {
                                                 </option>
                                                 <?php foreach ($accounts as $account): ?>
                                                     <option value="<?= $account['id'] ?>"><?= htmlspecialchars($account['name']) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <!-- 営業所の選択 -->
+                                        <div class="mb-3">
+                                            <label for="detailOffice-<?= $detail['id'] ?>" class="form-label">営業所</label>
+                                            <select class="form-select" id="detailOffice-<?= $detail['id'] ?>" name="office_id" required>
+                                                <option value="<?= htmlspecialchars($form_data['office_id'] ?? $detail['office_id']) ?>" selected>
+                                                    <?= htmlspecialchars($detail['office_name'] ?? '未設定') ?>
+                                                </option>
+                                                <?php foreach ($offices as $office): ?>
+                                                    <option value="<?= $office['id'] ?>"><?= htmlspecialchars($office['name']) ?></option>
                                                 <?php endforeach; ?>
                                             </select>
                                         </div>

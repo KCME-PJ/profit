@@ -7,9 +7,14 @@ try {
     $dbh = getDb();
     $stmt = $dbh->query('SELECT id, name FROM accounts');
     $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 営業所情報を取得
+    $stmt = $dbh->query('SELECT id, name FROM offices');
+    $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $_SESSION['error'] = '勘定科目の取得に失敗しました: ' . $e->getMessage();
+    $_SESSION['error'] = 'データの取得に失敗しました: ' . $e->getMessage();
     $accounts = [];
+    $offices = [];
 }
 ?>
 <html lang="ja">
@@ -112,8 +117,8 @@ try {
                             勘定科目設定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./account/account_list.php">勘定科目</a></li>
-                            <li><a class="dropdown-item" href="#">詳細</a></li>
+                            <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
+                            <li><a class="dropdown-item" href="./detail_list.php">詳細</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -156,6 +161,7 @@ try {
             </div>
         <?php endif; ?>
 
+        <!-- form -->
         <form action="add_detail.php" method="POST">
             <div class="mb-3">
                 <label for="detailName" class="form-label">詳細名</label>
@@ -176,6 +182,17 @@ try {
                     <?php foreach ($accounts as $account): ?>
                         <option value="<?= htmlspecialchars($account['id']) ?>">
                             <?= htmlspecialchars($account['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="office" class="form-label">営業所</label>
+                <select class="form-select" id="office" name="office_id" required>
+                    <option value="">-- 選択してください --</option>
+                    <?php foreach ($offices as $office): ?>
+                        <option value="<?= htmlspecialchars($office['id']) ?>">
+                            <?= htmlspecialchars($office['name']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
