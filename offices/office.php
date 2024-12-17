@@ -8,7 +8,7 @@ require_once '../includes/database.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profit index</title>
+    <title>係登録</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
@@ -105,7 +105,7 @@ require_once '../includes/database.php';
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
-                            <li><a class="dropdown-item" href="./office_list.php">営業所</a></li>
+                            <li><a class="dropdown-item" href="./office_list.php">係一覧</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -131,7 +131,7 @@ require_once '../includes/database.php';
         </div>
     </nav>
     <div class="container mt-4">
-        <h2>営業所の新規登録</h2>
+        <h2>係の新規登録</h2>
 
         <!-- エラーメッセージ表示 -->
         <?php if (isset($_SESSION['error'])): ?>
@@ -150,7 +150,7 @@ require_once '../includes/database.php';
         <?php endif; ?>
         <form action="add_office.php" method="POST">
             <div class="mb-3">
-                <label for="officeName" class="form-label">営業所名</label>
+                <label for="officeName" class="form-label">係名</label>
                 <input type="text" class="form-control" id="officeName" name="office_name" required>
             </div>
             <div class="mb-3">

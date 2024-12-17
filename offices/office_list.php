@@ -18,7 +18,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profit index</title>
+    <title>係一覧</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
@@ -115,7 +115,7 @@ try {
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
-                            <li><a class="dropdown-item" href="./office.php">営業所登録</a></li>
+                            <li><a class="dropdown-item" href="./office.php">係登録</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -141,7 +141,7 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
-        <h2 class="mb-4">営業所リスト</h2>
+        <h2 class="mb-4">係リスト</h2>
         <!-- メッセージ表示 -->
         <?php if (isset($_SESSION['success'])): ?>
             <div class="alert alert-success">
@@ -162,7 +162,7 @@ try {
             <thead>
                 <tr>
                     <th>ID</th>
-                    <th>営業所名</th>
+                    <th>係名</th>
                     <th>一意識別子</th>
                     <th>説明</th>
                     <th>操作</th>
