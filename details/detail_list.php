@@ -137,6 +137,7 @@ try {
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
                             <li><a class="dropdown-item" href="./detail.php">詳細登録</a></li>
+                            <li><a class="dropdown-item" href="../offices/office_list.php">係一覧</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -171,7 +172,7 @@ try {
                     <th>一意識別子</th>
                     <th>説明</th>
                     <th>勘定科目</th>
-                    <th>営業所</th>
+                    <th>係名</th>
                     <th>操作</th>
                 </tr>
             </thead>
