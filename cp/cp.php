@@ -49,7 +49,6 @@ foreach ($rows as $row) {
     <style>
         a {
             text-decoration: none;
-            /* アンダーラインを削除 */
         }
 
         .table th,
@@ -57,6 +56,7 @@ foreach ($rows as $row) {
             vertical-align: middle;
         }
 
+        /* 上部入力フォームのレイアウト */
         .info-box {
             background-color: #f8f9fa;
             border-radius: 5px;
@@ -68,31 +68,94 @@ foreach ($rows as $row) {
             width: 100px;
             text-align: right;
         }
+
+        /* ツリー構造の「+、-」アイコン装飾 */
+        .toggle-icon {
+            font-size: 0.7rem;
+            line-height: 1;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 0.2rem;
+            width: 1rem;
+            height: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        /* 数値入力部分のスピナーを非表示 */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            appearance: none;
+        }
+
+        /* 詳細の入力部分の幅を調整 */
+        .detail-input {
+            width: 150px;
+        }
+
+        .details-cell {
+            text-align: right;
+        }
+
+        .details-cell input {
+            text-align: right;
+            /* 入力欄内のテキストを右寄せ */
+            width: 150px;
+            /* 入力欄の幅を設定 */
+        }
+
+        /* tableのタイトル行を固定 */
+        .table-container {
+            max-height: 400px;
+            /* 必要に応じて高さを調整 */
+            overflow-y: auto;
+            /* 縦スクロールを有効化 */
+            border: 1px solid #ddd;
+            /* テーブルの境界を視覚化 */
+        }
+
+        .table th {
+            position: sticky;
+            top: 0;
+            background-color: #f8f9fa;
+            /* ヘッダーの背景色を設定 */
+            z-index: 2;
+            /* 他の要素より上に表示されるようにする */
+        }
     </style>
 </head>
 
 <body>
     <div class="container mt-4">
-        <h1 class="mb-4">CP 計画入力</h1>
+        <h3 class="mb-4">CP 計画入力</h3>
 
         <!-- 上部の入力フォーム -->
         <div class="info-box">
             <div class="row">
                 <div class="col-md-2">
                     <label>定時間 (時間)</label>
-                    <input type="number" step="0.01" id="standardHours" class="form-control" value="0">
+                    <input type="number" step="0.01" id="standardHours" class="form-control" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>残業時間 (時間)</label>
-                    <input type="number" step="0.01" id="overtimeHours" class="form-control" value="0">
+                    <input type="number" step="0.01" id="overtimeHours" class="form-control" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>時間移動 (時間)</label>
-                    <input type="number" step="0.01" id="transferredHours" class="form-control" value="0">
+                    <input type="number" step="0.01" id="transferredHours" class="form-control" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>賃率 (¥)</label>
-                    <input type="number" step="1" id="hourlyRate" class="form-control" value="0">
+                    <input type="number" step="1" id="hourlyRate" class="form-control" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
@@ -106,97 +169,131 @@ foreach ($rows as $row) {
         </div>
 
         <!-- 勘定科目と詳細の入力フォーム -->
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>勘定科目/詳細</th>
-                    <th style="width: 150px;">CP</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($accounts as $accountId => $account): ?>
-                    <!-- 勘定科目（親） -->
+        <div class="table-container">
+            <table class="table table-bordered table-hover">
+                <thead>
                     <tr>
-                        <td>
-                            <a href="#account-<?= $accountId ?>" data-bs-toggle="collapse" class="text-dark">
-                                <i class="bi bi-plus-lg me-2"></i><?= htmlspecialchars($account['name']) ?>
-                            </a>
-                        </td>
-                        <td class="text-end fw-bold" id="account-total-<?= $accountId ?>">
-                            <?= $account['total'] ?>
-                        </td>
+                        <th>勘定科目/詳細</th>
+                        <th style="width: 150px;">CP</th>
                     </tr>
-                    <!-- 詳細（子） -->
-                    <tr>
-                        <td colspan="2" class="p-0">
-                            <div class="collapse" id="account-<?= $accountId ?>">
-                                <table class="table mb-0">
-                                    <?php foreach ($account['details'] as $detail): ?>
-                                        <tr>
-                                            <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
-                                            <td>
-                                                <input type="number" step="1" class="form-control text-end detail-input"
-                                                    data-account-id="<?= $accountId ?>" value="<?= $detail['amount'] ?>">
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </table>
-                            </div>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    <?php foreach ($accounts as $accountId => $account): ?>
+                        <!-- 勘定科目（親） -->
+                        <tr>
+                            <td>
+                                <button class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
+                                    data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
+                                    <i class="bi bi-plus icon-small"></i>
+                                </button>
+                                <?= htmlspecialchars($account['name']) ?>
+                            </td>
+                            <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">
+                                <?= $account['total'] ?>
+                            </td>
+                        </tr>
+                        <!-- 詳細（子） -->
+                        <?php foreach ($account['details'] as $detail): ?>
+                            <tr class="collapse" id="child-<?= $accountId ?>">
+                                <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
+                                <td class="details-cell">
+                                    <input type="number" step="1"
+                                        class="form-control form-control-sm text-end input-value detail-input"
+                                        data-parent="account-<?= $accountId ?>"
+                                        data-account-id="<?= $accountId ?>"
+                                        placeholder="<?= $detail['amount'] ?>">
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function calculate() {
+            // 時間管理計算
             const standardHours = parseFloat(document.getElementById('standardHours').value) || 0;
             const overtimeHours = parseFloat(document.getElementById('overtimeHours').value) || 0;
             const transferredHours = parseFloat(document.getElementById('transferredHours').value) || 0;
             const hourlyRate = parseFloat(document.getElementById('hourlyRate').value) || 0;
 
-            // 労務費と総時間
             const totalHours = standardHours + overtimeHours + transferredHours;
             const laborCost = totalHours * hourlyRate;
 
             document.getElementById('totalHours').innerText = totalHours.toFixed(2);
             document.getElementById('laborCost').innerText = Math.round(laborCost);
 
-            // 経費合計の計算
+            // 経費合計計算
             let expenseTotal = 0;
-            document.querySelectorAll('.detail-input').forEach(input => {
-                expenseTotal += parseInt(input.value) || 0;
+            document.querySelectorAll('.input-value').forEach(input => {
+                expenseTotal += parseFloat(input.value) || 0;
             });
+            document.getElementById('expenseTotal').innerText = Math.round(expenseTotal);
 
-            document.getElementById('expenseTotal').innerText = expenseTotal;
-
-            // 各勘定科目の合計更新
-            let grandTotal = laborCost + expenseTotal;
+            // 総合計計算
+            const grandTotal = laborCost + expenseTotal;
             document.getElementById('grandTotal').innerText = Math.round(grandTotal);
 
-            // 勘定科目の詳細合計を更新
-            document.querySelectorAll('.detail-input').forEach(function(input) {
+            // 勘定科目ごとの合計計算
+            const accountTotals = {};
+            document.querySelectorAll('.input-value').forEach(input => {
                 const accountId = input.getAttribute('data-account-id');
-                let accountTotal = 0;
+                accountTotals[accountId] = (accountTotals[accountId] || 0) + (parseFloat(input.value) || 0);
+            });
 
-                // その勘定科目の合計を再計算
-                document.querySelectorAll(`.detail-input[data-account-id="${accountId}"]`).forEach(function(accountInput) {
-                    accountTotal += parseInt(accountInput.value) || 0;
-                });
-
-                // 勘定科目の合計を表示
-                document.getElementById(`account-total-${accountId}`).innerText = accountTotal;
+            Object.keys(accountTotals).forEach(accountId => {
+                const accountTotalElement = document.getElementById(`total-account-${accountId}`);
+                if (accountTotalElement) {
+                    accountTotalElement.textContent = Math.round(accountTotals[accountId]);
+                }
             });
         }
 
-        // イベントリスナーを設定
-        document.querySelectorAll('.info-box input, .detail-input').forEach(input => {
+        // 入力値変更時に計算
+        document.querySelectorAll('.info-box input, .input-value').forEach(input => {
             input.addEventListener('input', calculate);
         });
 
-        calculate(); // 初期計算
+        // 初期計算
+        calculate();
+    </script>
+    <script>
+        // 詳細の入力値が変更されたら合計を計算し親（勘定科目）に反映する
+        document.querySelectorAll('.input-value').forEach(input => {
+            input.addEventListener('input', () => {
+                const parentId = input.getAttribute('data-parent');
+                let total = 0;
+
+                // 同じ親の子要素を合計
+                document.querySelectorAll(`.input-value[data-parent='${parentId}']`).forEach(item => {
+                    const value = parseFloat(item.value) || 0;
+                    total += value;
+                });
+
+                // 親の合計値を更新
+                document.getElementById(`total-${parentId}`).textContent = total;
+            });
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // アイコンの切り替え
+            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+                icon.addEventListener('click', function() {
+                    const iconElement = icon.querySelector('i');
+                    if (iconElement.classList.contains('bi-dash-lg')) {
+                        iconElement.classList.remove('bi-dash-lg');
+                        iconElement.classList.add('bi-plus-lg');
+                    } else {
+                        iconElement.classList.remove('bi-plus-lg');
+                        iconElement.classList.add('bi-dash-lg');
+                    }
+                });
+            });
+        });
     </script>
 </body>
 
