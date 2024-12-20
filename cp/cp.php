@@ -62,6 +62,18 @@ foreach ($rows as $row) {
             border-radius: 5px;
             padding: 15px;
             margin-bottom: 15px;
+            position: relative;
+            /* 相対位置を指定 */
+        }
+
+        /* 上部入力フォーム内のボタン位置指定 */
+        .register-button {
+            position: absolute;
+            /* 絶対位置を指定 */
+            bottom: 10px;
+            /* 下から10pxの位置 */
+            right: 110px;
+            /* 右から110pxの位置 */
         }
 
         .info-box input {
@@ -135,37 +147,173 @@ foreach ($rows as $row) {
 </head>
 
 <body>
+    <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="../index.html">採算表</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            CP
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">2024</a></li>
+                            <li><a class="dropdown-item" href="#">2023</a></li>
+                            <li><a class="dropdown-item" href="#">2022</a></li>
+                            <li><a class="dropdown-item" href="#">2021</a></li>
+                            <li><a class="dropdown-item" href="#">2020</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            見通し
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            予定
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            月末見込み
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            概算
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+            <div class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="bi bi-person-fill"></i>&nbsp;
+                            user name さん
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
     <div class="container mt-4">
         <h3 class="mb-4">CP 計画入力</h3>
 
         <!-- 上部の入力フォーム -->
         <div class="info-box">
             <div class="row">
+                <!-- 年度と月の選択 -->
+                <div class="col-md-2">
+                    <label>年度</label>
+                    <select id="yearSelect" class="form-select form-select-sm">
+                        <?php
+                        $currentYear = date("Y");
+                        for ($i = $currentYear - 2; $i <= $currentYear + 2; $i++): ?>
+                            <option value="<?= $i ?>" <?= $i == $currentYear ? 'selected' : '' ?>>
+                                <?= $i ?>年度
+                            </option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
+                <?php
+                $selectedMonth = 4; // ここで選択したい月を指定
+                ?>
+
+                <div class="col-md-2">
+                    <label>月</label>
+                    <select id="monthSelect" class="form-select form-select-sm">
+                        <?php
+                        // 4月から12月を先に出力
+                        for ($i = 4; $i <= 12; $i++): ?>
+                            <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
+                                <?= $i ?>月
+                            </option>
+                        <?php endfor; ?>
+                        <?php
+                        // 1月から3月を後に出力
+                        for ($i = 1; $i <= 3; $i++): ?>
+                            <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
+                                <?= $i ?>月
+                            </option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
                 <div class="col-md-2">
                     <label>定時間 (時間)</label>
-                    <input type="number" step="0.01" id="standardHours" class="form-control" placeholder="0">
+                    <input type="number" step="0.01" id="standardHours" class="form-control form-control-sm" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>残業時間 (時間)</label>
-                    <input type="number" step="0.01" id="overtimeHours" class="form-control" placeholder="0">
+                    <input type="number" step="0.01" id="overtimeHours" class="form-control form-control-sm" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>時間移動 (時間)</label>
-                    <input type="number" step="0.01" id="transferredHours" class="form-control" placeholder="0">
+                    <input type="number" step="0.01" id="transferredHours" class="form-control form-control-sm" placeholder="0">
                 </div>
                 <div class="col-md-2">
                     <label>賃率 (¥)</label>
-                    <input type="number" step="1" id="hourlyRate" class="form-control" placeholder="0">
+                    <input type="number" step="1" id="hourlyRate" class="form-control form-control-sm" placeholder="0">
                 </div>
-                <div class="col-md-2">
-                    <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
-                    <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span>
-                </div>
-                <div class="col-md-2">
-                    <strong>労務費：</strong> ¥<span id="laborCost">0</span><br>
-                    <strong>総合計：</strong> ¥<span id="grandTotal">0</span>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
+                        <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>労務費：</strong> ¥<span id="laborCost">0</span><br>
+                        <strong>総合計：</strong> ¥<span id="grandTotal">0</span>
+                    </div>
                 </div>
             </div>
+            <button class="btn btn-outline-danger btn-sm register-button">登録</button>
         </div>
 
         <!-- 勘定科目と詳細の入力フォーム -->
@@ -224,18 +372,18 @@ foreach ($rows as $row) {
             const laborCost = totalHours * hourlyRate;
 
             document.getElementById('totalHours').innerText = totalHours.toFixed(2);
-            document.getElementById('laborCost').innerText = Math.round(laborCost);
+            document.getElementById('laborCost').innerText = new Intl.NumberFormat().format(Math.round(laborCost));
 
             // 経費合計計算
             let expenseTotal = 0;
             document.querySelectorAll('.input-value').forEach(input => {
                 expenseTotal += parseFloat(input.value) || 0;
             });
-            document.getElementById('expenseTotal').innerText = Math.round(expenseTotal);
+            document.getElementById('expenseTotal').innerText = new Intl.NumberFormat().format(Math.round(expenseTotal));
 
             // 総合計計算
             const grandTotal = laborCost + expenseTotal;
-            document.getElementById('grandTotal').innerText = Math.round(grandTotal);
+            document.getElementById('grandTotal').innerText = new Intl.NumberFormat().format(Math.round(grandTotal));
 
             // 勘定科目ごとの合計計算
             const accountTotals = {};
