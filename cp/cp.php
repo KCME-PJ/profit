@@ -8,7 +8,7 @@ $query = "SELECT a.id AS account_id, a.name AS account_name,
                  IFNULL(SUM(m.amount), 0) AS total_amount
           FROM accounts a
           LEFT JOIN details d ON a.id = d.account_id
-          LEFT JOIN monthly_cp m ON d.id = m.detail_id
+          LEFT JOIN monthly_cp_details m ON d.id = m.detail_id
           GROUP BY a.id, d.id, a.name, d.name
           ORDER BY a.id, d.id";
 $stmt = $dbh->prepare($query);
@@ -245,118 +245,123 @@ foreach ($rows as $row) {
         </div>
     </nav>
     <div class="container mt-4">
-        <h3 class="mb-4">CP 計画入力</h3>
+        <form action="process_cp.php" method="POST">
+            <h3 class="mb-4">CP 計画入力</h3>
 
-        <!-- 上部の入力フォーム -->
-        <div class="info-box">
-            <div class="row">
-                <!-- 年度と月の選択 -->
-                <div class="col-md-2">
-                    <label>年度</label>
-                    <select id="yearSelect" class="form-select form-select-sm">
-                        <?php
-                        $currentYear = date("Y");
-                        for ($i = $currentYear - 2; $i <= $currentYear + 2; $i++): ?>
-                            <option value="<?= $i ?>" <?= $i == $currentYear ? 'selected' : '' ?>>
-                                <?= $i ?>年度
-                            </option>
-                        <?php endfor; ?>
-                    </select>
-                </div>
-                <?php
-                $selectedMonth = 4; // ここで選択したい月を指定
-                ?>
+            <!-- 上部の入力フォーム -->
+            <div class="info-box">
+                <div class="row">
+                    <!-- 年度と月の選択 -->
+                    <div class="col-md-2">
+                        <label>年度</label>
+                        <select id="yearSelect" name="year" class="form-select form-select-sm">
+                            <?php
+                            $currentYear = date("Y");
+                            for ($i = $currentYear - 2; $i <= $currentYear + 2; $i++): ?>
+                                <option value="<?= $i ?>" <?= $i == $currentYear ? 'selected' : '' ?>>
+                                    <?= $i ?>年度
+                                </option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <?php
+                    $selectedMonth = 4; // ここで選択したい月を指定
+                    ?>
 
-                <div class="col-md-2">
-                    <label>月</label>
-                    <select id="monthSelect" class="form-select form-select-sm">
-                        <?php
-                        // 4月から12月を先に出力
-                        for ($i = 4; $i <= 12; $i++): ?>
-                            <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                <?= $i ?>月
-                            </option>
-                        <?php endfor; ?>
-                        <?php
-                        // 1月から3月を後に出力
-                        for ($i = 1; $i <= 3; $i++): ?>
-                            <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                <?= $i ?>月
-                            </option>
-                        <?php endfor; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label>定時間 (時間)</label>
-                    <input type="number" step="0.01" id="standardHours" class="form-control form-control-sm" placeholder="0">
-                </div>
-                <div class="col-md-2">
-                    <label>残業時間 (時間)</label>
-                    <input type="number" step="0.01" id="overtimeHours" class="form-control form-control-sm" placeholder="0">
-                </div>
-                <div class="col-md-2">
-                    <label>時間移動 (時間)</label>
-                    <input type="number" step="0.01" id="transferredHours" class="form-control form-control-sm" placeholder="0">
-                </div>
-                <div class="col-md-2">
-                    <label>賃率 (¥)</label>
-                    <input type="number" step="1" id="hourlyRate" class="form-control form-control-sm" placeholder="0">
-                </div>
-                <div class="row mt-3">
-                    <div class="col-md-4">
-                        <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
-                        <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span>
+                    <div class="col-md-2">
+                        <label>月</label>
+                        <select id="monthSelect" name="month" class="form-select form-select-sm">
+                            <?php
+                            // 4月から12月を先に出力
+                            for ($i = 4; $i <= 12; $i++): ?>
+                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
+                                    <?= $i ?>月
+                                </option>
+                            <?php endfor; ?>
+                            <?php
+                            // 1月から3月を後に出力
+                            for ($i = 1; $i <= 3; $i++): ?>
+                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
+                                    <?= $i ?>月
+                                </option>
+                            <?php endfor; ?>
+                        </select>
                     </div>
-                    <div class="col-md-4">
-                        <strong>労務費：</strong> ¥<span id="laborCost">0</span><br>
-                        <strong>総合計：</strong> ¥<span id="grandTotal">0</span>
+                    <div class="col-md-2">
+                        <label>定時間 (時間)</label>
+                        <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>残業時間 (時間)</label>
+                        <input type="number" step="0.01" id="overtimeHours" name="overtime_hours" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>時間移動 (時間)</label>
+                        <input type="number" step="0.01" id="transferredHours" name="transferred_hours" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>賃率 (¥)</label>
+                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
+                            <strong>労務費：</strong> ¥<span id="laborCost">0</span>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span><br>
+                            <strong>　総合計：</strong> ¥<span id="grandTotal">0</span>
+                        </div>
                     </div>
                 </div>
+                <button type="submit" class="btn btn-outline-danger btn-sm register-button">登録</button>
             </div>
-            <button class="btn btn-outline-danger btn-sm register-button">登録</button>
-        </div>
 
-        <!-- 勘定科目と詳細の入力フォーム -->
-        <div class="table-container">
-            <table class="table table-bordered table-hover">
-                <thead>
-                    <tr>
-                        <th>勘定科目/詳細</th>
-                        <th style="width: 150px;">CP</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($accounts as $accountId => $account): ?>
-                        <!-- 勘定科目（親） -->
+            <!-- 勘定科目と詳細の入力フォーム -->
+            <div class="table-container">
+                <table class="table table-bordered table-hover">
+                    <thead>
                         <tr>
-                            <td>
-                                <button class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
-                                    data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
-                                    <i class="bi bi-plus icon-small"></i>
-                                </button>
-                                <?= htmlspecialchars($account['name']) ?>
-                            </td>
-                            <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">
-                                <?= $account['total'] ?>
-                            </td>
+                            <th>勘定科目/詳細</th>
+                            <th style="width: 150px;">CP</th>
                         </tr>
-                        <!-- 詳細（子） -->
-                        <?php foreach ($account['details'] as $detail): ?>
-                            <tr class="collapse" id="child-<?= $accountId ?>">
-                                <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
-                                <td class="details-cell">
-                                    <input type="number" step="1"
-                                        class="form-control form-control-sm text-end input-value detail-input"
-                                        data-parent="account-<?= $accountId ?>"
-                                        data-account-id="<?= $accountId ?>"
-                                        placeholder="<?= $detail['amount'] ?>">
+                    </thead>
+                    <tbody>
+                        <?php foreach ($accounts as $accountId => $account): ?>
+                            <!-- 勘定科目（親） -->
+                            <tr>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
+                                        data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
+                                        <i class="bi bi-plus icon-small"></i>
+                                    </button>
+                                    <?= htmlspecialchars($account['name']) ?>
+                                </td>
+                                <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">
+                                    <?= $account['total'] ?>
+                                    <input type="hidden" name="total_account[<?= $accountId ?>]" value="<?= htmlspecialchars($account['total']) ?>">
                                 </td>
                             </tr>
+                            <!-- 詳細（子） -->
+                            <?php foreach ($account['details'] as $detail): ?>
+                                <tr class="collapse" id="child-<?= $accountId ?>">
+                                    <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
+                                    <td class="details-cell">
+                                        <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
+                                        <input type="number" step="1"
+                                            class="form-control form-control-sm text-end input-value detail-input"
+                                            data-parent="account-<?= $accountId ?>"
+                                            data-account-id="<?= $accountId ?>"
+                                            name="amounts[]"
+                                            placeholder="0">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
                         <?php endforeach; ?>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+                    </tbody>
+                </table>
+            </div>
+        </form>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -443,6 +448,7 @@ foreach ($rows as $row) {
             });
         });
     </script>
+
 </body>
 
 </html>
