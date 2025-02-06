@@ -1,39 +1,60 @@
 <?php
 require_once '../includes/database.php';
+
+// データベース接続
 $dbh = getDb();
 
-// データ取得
-$query = "SELECT a.id AS account_id, a.name AS account_name, 
-                 d.id AS detail_id, d.name AS detail_name, 
-                 IFNULL(SUM(m.amount), 0) AS total_amount
-          FROM accounts a
-          LEFT JOIN details d ON a.id = d.account_id
-          LEFT JOIN monthly_cp_details m ON d.id = m.detail_id
-          GROUP BY a.id, d.id, a.name, d.name
-          ORDER BY a.id, d.id";
-$stmt = $dbh->prepare($query);
-$stmt->execute();
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    // 月次 CP 登録済みの年と月を取得
+    $query = "SELECT DISTINCT year, month FROM monthly_cp ORDER BY year ASC, month ASC";
+    $stmt = $dbh->prepare($query);
+    $stmt->execute();
+    $registeredDates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// データを構造化
-$accounts = [];
-foreach ($rows as $row) {
-    $accountId = $row['account_id'];
-    if (!isset($accounts[$accountId])) {
-        $accounts[$accountId] = [
-            'name' => $row['account_name'],
-            'total' => 0,
-            'details' => []
-        ];
+    // データを年ごとにグループ化
+    $years = [];
+    foreach ($registeredDates as $date) {
+        $years[$date['year']][] = $date['month'];
     }
-    if (!is_null($row['detail_id'])) {
-        $accounts[$accountId]['details'][] = [
-            'id' => $row['detail_id'],
-            'name' => $row['detail_name'],
-            'amount' => floor($row['total_amount']) // 小数点以下は不要
-        ];
-        $accounts[$accountId]['total'] += floor($row['total_amount']);
+
+    // 勘定科目、詳細、金額、時間管理内容をマージ
+    $accountsQuery =
+        "SELECT 
+        a.id AS account_id,
+        a.name AS account_name,
+        d.id AS detail_id,
+        d.name AS detail_name
+        FROM accounts a
+        LEFT JOIN details d ON a.id = d.account_id
+        ORDER BY a.id ASC, d.id ASC";
+    $accountsStmt = $dbh->prepare($accountsQuery);
+    $accountsStmt->execute();
+    $accountsDetails = $accountsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($accountsDetails)) {
+        echo "データが見つかりません。";
     }
+
+    // データを構造化
+    $accounts = [];
+    foreach ($accountsDetails as $row) {
+        $accountId = $row['account_id'];
+        if (!isset($accounts[$accountId])) {
+            $accounts[$accountId] = [
+                'name' => $row['account_name'],
+                'details' => []
+            ];
+        }
+        if (!is_null($row['detail_id'])) {
+            $accounts[$accountId]['details'][] = [
+                'id' => $row['detail_id'],
+                'name' => $row['detail_name'],
+            ];
+        }
+    }
+} catch (Exception $e) {
+    echo "エラー: " . $e->getMessage();
+    $accounts = [];
 }
 ?>
 
@@ -254,7 +275,7 @@ foreach ($rows as $row) {
         </div>
     </nav>
     <div class="container mt-4">
-        <form action="#" method="POST">
+        <form action="./cp_edit_load.php" method="POST">
             <h3 class="mb-4">CP 編集</h3>
 
             <!-- 上部の入力フォーム -->
@@ -263,39 +284,20 @@ foreach ($rows as $row) {
                     <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
-                        <select id="yearSelect" name="year" class="form-select form-select-sm">
-                            <?php
-                            $currentYear = date("Y");
-                            for ($i = $currentYear - 2; $i <= $currentYear + 2; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $currentYear ? 'selected' : '' ?>>
-                                    <?= $i ?>年度
-                                </option>
-                            <?php endfor; ?>
+                        <select id="yearSelect" name="year" class="form-select form-select-sm" onchange="updateMonths()">
+                            <option value="" disabled selected>年度を選択</option>
+                            <?php foreach (array_keys($years) as $year): ?>
+                                <option value="<?= $year ?>"><?= $year ?>年度</option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
-                    <?php
-                    $selectedMonth = 4; // ここで選択したい月を指定
-                    ?>
-
                     <div class="col-md-2">
                         <label>月</label>
-                        <select id="monthSelect" name="month" class="form-select form-select-sm">
-                            <?php
-                            // 4月から12月を先に出力
-                            for ($i = 4; $i <= 12; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                    <?= $i ?>月
-                                </option>
-                            <?php endfor; ?>
-                            <?php
-                            // 1月から3月を後に出力
-                            for ($i = 1; $i <= 3; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                    <?= $i ?>月
-                                </option>
-                            <?php endfor; ?>
+                        <select id="monthSelect" name="month" class="form-select form-select-sm" disabled>
+                            <option value="" disabled selected>月を選択</option>
                         </select>
                     </div>
+                    <!-- 時間管理 -->
                     <div class="col-md-2">
                         <label>定時間 (時間)</label>
                         <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
@@ -323,7 +325,6 @@ foreach ($rows as $row) {
                         </div>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-outline-success btn-sm register-button1" name="action" value="load">読込</button>
                 <button type="submit" class="btn btn-outline-danger btn-sm register-button2" name="action" value="update">修正</button>
             </div>
 
@@ -337,8 +338,8 @@ foreach ($rows as $row) {
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- 勘定科目（親） -->
                         <?php foreach ($accounts as $accountId => $account): ?>
-                            <!-- 勘定科目（親） -->
                             <tr>
                                 <td>
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
@@ -347,9 +348,8 @@ foreach ($rows as $row) {
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
-                                <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">
-                                    <?= $account['total'] ?>
-                                    <input type="hidden" name="total_account[<?= $accountId ?>]" value="<?= htmlspecialchars($account['total']) ?>">
+                                <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0
+                                    <input type="hidden" name="total_account[<?= $accountId ?>]" value="0">
                                 </td>
                             </tr>
                             <!-- 詳細（子） -->
@@ -362,7 +362,8 @@ foreach ($rows as $row) {
                                             class="form-control form-control-sm text-end input-value detail-input"
                                             data-parent="account-<?= $accountId ?>"
                                             data-account-id="<?= $accountId ?>"
-                                            name="amounts[]"
+                                            data-detail-id="<?= $detail['id'] ?>"
+                                            name="amounts[<?= $detail['id'] ?>]"
                                             placeholder="0">
                                     </td>
                                 </tr>
@@ -375,72 +376,6 @@ foreach ($rows as $row) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function calculate() {
-            // 時間管理計算
-            const standardHours = parseFloat(document.getElementById('standardHours').value) || 0;
-            const overtimeHours = parseFloat(document.getElementById('overtimeHours').value) || 0;
-            const transferredHours = parseFloat(document.getElementById('transferredHours').value) || 0;
-            const hourlyRate = parseFloat(document.getElementById('hourlyRate').value) || 0;
-
-            const totalHours = standardHours + overtimeHours + transferredHours;
-            const laborCost = totalHours * hourlyRate;
-
-            document.getElementById('totalHours').innerText = totalHours.toFixed(2);
-            document.getElementById('laborCost').innerText = new Intl.NumberFormat().format(Math.round(laborCost));
-
-            // 経費合計計算
-            let expenseTotal = 0;
-            document.querySelectorAll('.input-value').forEach(input => {
-                expenseTotal += parseFloat(input.value) || 0;
-            });
-            document.getElementById('expenseTotal').innerText = new Intl.NumberFormat().format(Math.round(expenseTotal));
-
-            // 総合計計算
-            const grandTotal = laborCost + expenseTotal;
-            document.getElementById('grandTotal').innerText = new Intl.NumberFormat().format(Math.round(grandTotal));
-
-            // 勘定科目ごとの合計計算
-            const accountTotals = {};
-            document.querySelectorAll('.input-value').forEach(input => {
-                const accountId = input.getAttribute('data-account-id');
-                accountTotals[accountId] = (accountTotals[accountId] || 0) + (parseFloat(input.value) || 0);
-            });
-
-            Object.keys(accountTotals).forEach(accountId => {
-                const accountTotalElement = document.getElementById(`total-account-${accountId}`);
-                if (accountTotalElement) {
-                    accountTotalElement.textContent = Math.round(accountTotals[accountId]);
-                }
-            });
-        }
-
-        // 入力値変更時に計算
-        document.querySelectorAll('.info-box input, .input-value').forEach(input => {
-            input.addEventListener('input', calculate);
-        });
-
-        // 初期計算
-        calculate();
-    </script>
-    <script>
-        // 詳細の入力値が変更されたら合計を計算し親（勘定科目）に反映する
-        document.querySelectorAll('.input-value').forEach(input => {
-            input.addEventListener('input', () => {
-                const parentId = input.getAttribute('data-parent');
-                let total = 0;
-
-                // 同じ親の子要素を合計
-                document.querySelectorAll(`.input-value[data-parent='${parentId}']`).forEach(item => {
-                    const value = parseFloat(item.value) || 0;
-                    total += value;
-                });
-
-                // 親の合計値を更新
-                document.getElementById(`total-${parentId}`).textContent = total;
-            });
-        });
-    </script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // アイコンの切り替え
@@ -458,7 +393,11 @@ foreach ($rows as $row) {
             });
         });
     </script>
-
+    <script>
+        // 年ごとに対応する月データを保持
+        const yearMonthData = <?= json_encode($years) ?>;
+    </script>
+    <script src="../js/cp_edit.js"></script>
 </body>
 
 </html>
