@@ -327,8 +327,8 @@ foreach ($rows as $row) {
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- 勘定科目（親） -->
                         <?php foreach ($accounts as $accountId => $account): ?>
-                            <!-- 勘定科目（親） -->
                             <tr>
                                 <td>
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
