@@ -16,7 +16,8 @@ try {
 
     // 時間管理データを取得
     $timeQuery = "
-        SELECT 
+        SELECT
+            mcpt.monthly_cp_id,
             mcpt.standard_hours,
             mcpt.overtime_hours,
             mcpt.transferred_hours,
@@ -41,6 +42,7 @@ try {
 
     // 結果をJSON形式で返却
     echo json_encode([
+        'monthly_cp_id' => $timeData['monthly_cp_id'] ?? 0,
         'standard_hours' => $timeData['standard_hours'] ?? 0,
         'overtime_hours' => $timeData['overtime_hours'] ?? 0,
         'transferred_hours' => $timeData['transferred_hours'] ?? 0,

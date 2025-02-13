@@ -169,7 +169,7 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
-        <form action="./cp_edit_load.php" method="POST">
+        <form action="./cp_update.php" method="POST">
             <h3 class="mb-4">CP 編集</h3>
 
             <!-- 上部の入力フォーム -->
@@ -192,6 +192,7 @@ try {
                         </select>
                     </div>
                     <!-- 時間管理 -->
+                    <input type="hidden" id="monthlyCpId" name="monthly_cp_id">
                     <div class="col-md-2">
                         <label>定時間 (時間)</label>
                         <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">

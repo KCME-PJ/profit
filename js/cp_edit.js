@@ -34,6 +34,7 @@ function loadData() {
             console.log("サーバーからのレスポンス:", data);
 
             // フォームフィールドにデータを反映
+            document.getElementById('monthlyCpId').value = data.monthly_cp_id || 0;
             document.getElementById('standardHours').value = data.standard_hours || 0;
             document.getElementById('overtimeHours').value = data.overtime_hours || 0;
             document.getElementById('transferredHours').value = data.transferred_hours || 0;
