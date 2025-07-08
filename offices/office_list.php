@@ -38,77 +38,47 @@ try {
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            CP
+                            aria-expanded="false">CP
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./cp/cp.html">2025</a></li>
-                            <li><a class="dropdown-item" href="#">2024</a></li>
-                            <li><a class="dropdown-item" href="#">2023</a></li>
-                            <li><a class="dropdown-item" href="#">2022</a></li>
-                            <li><a class="dropdown-item" href="#">2021</a></li>
-                            <li><a class="dropdown-item" href="#">2020</a></li>
-
+                            <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
+                            <li><a class="dropdown-item" href="../cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            見通し
+                            aria-expanded="false">見通し
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">見通し入力</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            予定
+                            aria-expanded="false">予定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">予定入力</a></li>
-                            <li><a class="dropdown-item" href="#">CP差確認</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            月末見込み
+                            aria-expanded="false">月末見込み
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">月末見込み入力</a></li>
-                            <li><a class="dropdown-item" href="#">予定差確認</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            概算
+                            aria-expanded="false">概算
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="monthly_actual/input_monthly_actual.html">実績入力</a></li>
-                            <li><a class="dropdown-item" href="monthly_actual/check_monthly_actual.html">予実確認</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../result/result_edit.php">概算編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
                             aria-expanded="false">
                             勘定科目設定
                         </a>
@@ -141,7 +111,7 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
-        <h2 class="mb-4">係リスト</h2>
+        <h4 class="mb-4">係リスト</h4>
         <!-- メッセージ表示 -->
         <?php if (isset($_SESSION['success'])): ?>
             <div class="alert alert-success">

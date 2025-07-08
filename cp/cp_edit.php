@@ -6,7 +6,7 @@ $dbh = getDb();
 
 try {
     // 月次 CP 登録済みの年と月を取得
-    $query = "SELECT DISTINCT year, month FROM monthly_cp ORDER BY year ASC, month ASC";
+    $query = "SELECT DISTINCT year, month FROM monthly_cp";
     $stmt = $dbh->prepare($query);
     $stmt->execute();
     $registeredDates = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -16,6 +16,10 @@ try {
     foreach ($registeredDates as $date) {
         $years[$date['year']][] = $date['month'];
     }
+    foreach ($years as &$months) {
+        sort($months); // 昇順に並べ替え
+    }
+    unset($months); // 参照解除
 
     // 勘定科目、詳細、金額、時間管理内容をマージ
     $accountsQuery =
@@ -87,11 +91,7 @@ try {
                             CP
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">2024</a></li>
-                            <li><a class="dropdown-item" href="#">2023</a></li>
-                            <li><a class="dropdown-item" href="#">2022</a></li>
-                            <li><a class="dropdown-item" href="#">2021</a></li>
-                            <li><a class="dropdown-item" href="#">2020</a></li>
+                            <li><a class="dropdown-item" href="./cp.php">CP計画</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -100,12 +100,7 @@ try {
                             見通し
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -114,12 +109,7 @@ try {
                             予定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -128,7 +118,7 @@ try {
                             月末見込み
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                             <li><a class="dropdown-item" href="#">Another action</a></li>
                             <li>
                                 <hr class="dropdown-divider">
@@ -142,8 +132,26 @@ try {
                             概算
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
                             <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            勘定科目設定
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="../account/account.php">勘定科目登録</a></li>
+                            <li><a class="dropdown-item" href="../account/account_list.php">勘定科目リスト</a></li>
+                            <li><a class="dropdown-item" href="../details/detail.php">詳細登録</a></li>
+                            <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
+                            <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
+                            <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -169,8 +177,8 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
-        <form action="./cp_update.php" method="POST">
-            <h3 class="mb-4">CP 編集</h3>
+        <form id="mainForm" action="./cp_update.php" method="POST">
+            <h4 class="mb-4" id="editTitle">CP 編集</h4>
 
             <!-- 上部の入力フォーム -->
             <div class="info-box">
@@ -220,7 +228,8 @@ try {
                         </div>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-outline-danger btn-sm register-button2" name="action" value="update">修正</button>
+                <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
+                <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#cpFixModal">確定</button>
             </div>
 
             <!-- 勘定科目と詳細の入力フォーム -->
@@ -267,7 +276,47 @@ try {
                     </tbody>
                 </table>
             </div>
+            <!-- 処理モード用の hidden input -->
+            <input type="hidden" name="action_type" id="cpMode" value="update">
         </form>
+        <!-- CP修正モーダル -->
+        <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="confirmModalLabel">修正の確認</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                    </div>
+                    <div class="modal-body">
+                        本当に修正してもよろしいですか？
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                        <button type="button" class="btn btn-danger" id="confirmSubmit">はい、修正する</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- CP確定モーダル -->
+        <div class="modal fade" id="cpFixModal" tabindex="-1" aria-labelledby="cpFixModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="cpFixModalLabel">CP確定</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        この内容でCPを確定して、見通しへ反映します。よろしいですか？
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                        <button type="button" class="btn btn-primary" id="cpFixConfirmBtn">はい、確定</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -291,6 +340,20 @@ try {
     <script>
         // 年ごとに対応する月データを保持
         const yearMonthData = <?= json_encode($years) ?>;
+    </script>
+    <script>
+        // CP修正モーダルの「はい」ボタンを押したとき
+        document.getElementById('confirmSubmit').addEventListener('click', function() {
+            document.getElementById('cpMode').value = 'update'; // 修正モード
+            document.getElementById('mainForm').submit();
+        });
+    </script>
+    <script>
+        // CP確定モーダルの「はい」ボタンを押したとき
+        document.getElementById('cpFixConfirmBtn').addEventListener('click', function() {
+            document.getElementById('cpMode').value = 'fixed'; // 確定モード
+            document.getElementById('mainForm').submit();
+        });
     </script>
     <script src="../js/cp_edit.js"></script>
 </body>

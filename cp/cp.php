@@ -66,11 +66,7 @@ foreach ($rows as $row) {
                             CP
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">2024</a></li>
-                            <li><a class="dropdown-item" href="#">2023</a></li>
-                            <li><a class="dropdown-item" href="#">2022</a></li>
-                            <li><a class="dropdown-item" href="#">2021</a></li>
-                            <li><a class="dropdown-item" href="#">2020</a></li>
+                            <li><a class="dropdown-item" href="./cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -79,12 +75,7 @@ foreach ($rows as $row) {
                             見通し
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -93,12 +84,7 @@ foreach ($rows as $row) {
                             予定
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -107,7 +93,7 @@ foreach ($rows as $row) {
                             月末見込み
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                             <li><a class="dropdown-item" href="#">Another action</a></li>
                             <li>
                                 <hr class="dropdown-divider">
@@ -121,8 +107,26 @@ foreach ($rows as $row) {
                             概算
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#">Action</a></li>
+                            <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
                             <li><a class="dropdown-item" href="#">Another action</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            勘定科目設定
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="../account/account.php">勘定科目登録</a></li>
+                            <li><a class="dropdown-item" href="../account/account_list.php">勘定科目リスト</a></li>
+                            <li><a class="dropdown-item" href="../details/detail.php">詳細登録</a></li>
+                            <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
+                            <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
+                            <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -149,7 +153,7 @@ foreach ($rows as $row) {
     </nav>
     <div class="container mt-4">
         <form action="process_cp.php" method="POST">
-            <h3 class="mb-4">CP 計画入力</h3>
+            <h4 class="mb-4">CP 計画入力</h4>
 
             <!-- 上部の入力フォーム -->
             <div class="info-box">
