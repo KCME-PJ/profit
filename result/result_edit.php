@@ -128,6 +128,12 @@ try {
     </nav>
 
     <div class="container mt-4">
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?= htmlspecialchars($_GET['error']) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+            </div>
+        <?php endif; ?>
         <form id="mainForm" action="result_update.php" method="POST">
             <h4 class="mb-4">概算実績 編集</h4>
 

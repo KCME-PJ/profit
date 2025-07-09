@@ -1,10 +1,6 @@
 <?php
 require_once '../includes/database.php';
 
-/**
- * 概算実績（result）の更新処理
- * 明細（amounts）＋時間・賃率を含む
- */
 function updateMonthlyResult($data, $dbh = null)
 {
     if (!$dbh) {
@@ -22,16 +18,24 @@ function updateMonthlyResult($data, $dbh = null)
         throw new Exception('result_id が存在しません。');
     }
 
+    // ステータス確認（fixedならエラー）
+    $stmt = $dbh->prepare("SELECT status FROM monthly_result WHERE id = ?");
+    $stmt->execute([$result_id]);
+    $status = $stmt->fetchColumn();
+
+    if ($status === 'fixed') {
+        throw new Exception("この概算実績はすでに確定済みで、編集できません。");
+    }
+
     try {
         $dbh->beginTransaction();
 
-        // 明細（各 detail_id に対する金額）の更新・削除・追加
+        // 勘定科目詳細の更新・挿入・削除
         foreach ($amounts as $detail_id => $amount) {
             if ($amount === "" || $amount === null) {
                 $stmt = $dbh->prepare("DELETE FROM monthly_result_details WHERE result_id = ? AND detail_id = ?");
                 $stmt->execute([$result_id, $detail_id]);
             } else {
-                // 既存確認
                 $stmt = $dbh->prepare("SELECT id FROM monthly_result_details WHERE result_id = ? AND detail_id = ?");
                 $stmt->execute([$result_id, $detail_id]);
                 $existing = $stmt->fetchColumn();
@@ -54,5 +58,22 @@ function updateMonthlyResult($data, $dbh = null)
     } catch (Exception $e) {
         $dbh->rollBack();
         throw new Exception("概算実績の更新中にエラーが発生しました: " . $e->getMessage());
+    }
+}
+
+function confirmMonthlyResult($data, $dbh = null)
+{
+    updateMonthlyResult($data, $dbh);
+
+    $result_id = $data['result_id'] ?? null;
+    if (!$result_id) {
+        throw new Exception("result_id が存在しません。");
+    }
+
+    try {
+        $stmt = $dbh->prepare("UPDATE monthly_result SET status = 'fixed' WHERE id = ?");
+        $stmt->execute([$result_id]);
+    } catch (Exception $e) {
+        throw new Exception("概算実績の確定中にエラーが発生しました: " . $e->getMessage());
     }
 }
