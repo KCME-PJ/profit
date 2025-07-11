@@ -272,6 +272,16 @@ try {
             document.getElementById('mainForm').submit();
         });
     </script>
+    <script>
+        if (window.history.replaceState) {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('error')) {
+                // クエリパラメータを削除して履歴を書き換え
+                url.searchParams.delete('error');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        }
+    </script>
     <script src="../js/result_edit.js"></script>
 </body>
 
