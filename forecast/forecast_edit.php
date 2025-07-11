@@ -61,7 +61,7 @@ try {
     <title>見通し 修正</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="../css/cp_edit.css">
+    <link rel="stylesheet" href="../css/edit.css">
 </head>
 
 <body>
