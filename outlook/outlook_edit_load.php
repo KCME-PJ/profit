@@ -14,7 +14,7 @@ try {
         throw new Exception("パラメータが不足しています。");
     }
 
-    // 月末見通し本体（月次時間＋単価）の取得（1件のみ）
+    // 概算実績（本体）データの取得
     $stmt = $dbh->prepare("
         SELECT * 
         FROM monthly_outlook 

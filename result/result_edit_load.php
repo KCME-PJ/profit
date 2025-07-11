@@ -49,6 +49,7 @@ try {
     // 配列を detail_id => amount の形式に整形
     $details = array_column($detailsData, 'amount', 'detail_id');
 
+    // JSONとして返す
     echo json_encode([
         'result_id' => (int)$result['id'],
         'standard_hours' => (float)$result['standard_hours'],
