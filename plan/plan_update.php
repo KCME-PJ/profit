@@ -45,5 +45,7 @@ try {
 <?php
 } catch (Exception $e) {
     if ($dbh->inTransaction()) $dbh->rollBack();
-    exit("エラー: " . $e->getMessage());
+    $error = urlencode($e->getMessage());
+    header("Location: plan_edit.php?error={$error}");
+    exit;
 }
