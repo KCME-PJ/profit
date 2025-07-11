@@ -17,6 +17,15 @@ function updateMonthlyForecast($data, $dbh = null)
     if (!$forecast_id) {
         throw new Exception('forecast_id が存在しません。');
     }
+
+    // ステータス確認（fixedならエラー）
+    $stmt = $dbh->prepare("SELECT status FROM monthly_forecast WHERE id = ?");
+    $stmt->execute([$forecast_id]);
+    $status = $stmt->fetchColumn();
+    if ($status === 'fixed') {
+        throw new Exception("この見通しはすでに確定済みで、編集できません。");
+    }
+
     try {
         $dbh->beginTransaction();
 
@@ -71,7 +80,7 @@ function reflectToPlan($forecast_id, $dbh = null)
     $dbh->beginTransaction();
 
     try {
-        // 予定テーブルを削除してから再挿入（必要に応じてロジック変更可）
+        // 予定テーブルを削除してから再挿入
         $stmt = $dbh->prepare("DELETE FROM monthly_plan WHERE year = ? AND month = ?");
         $stmt->execute([$year, $month]);
 
@@ -81,10 +90,9 @@ function reflectToPlan($forecast_id, $dbh = null)
                                FROM monthly_forecast WHERE id = ?");
         $stmt->execute([$forecast_id]);
 
-        // plan_idの取得
         $plan_id = $dbh->lastInsertId();
 
-        // forecast明細を予定明細にコピー
+        // 見通し明細を予定明細にコピー
         $stmt = $dbh->prepare("INSERT INTO monthly_plan_details (plan_id, detail_id, amount)
                                SELECT ?, detail_id, amount FROM monthly_forecast_details WHERE forecast_id = ?");
         $stmt->execute([$plan_id, $forecast_id]);
@@ -100,4 +108,16 @@ function confirmMonthlyForecast($data, $dbh = null)
 {
     updateMonthlyForecast($data, $dbh);
     reflectToPlan($data['forecast_id'], $dbh);
+
+    $forecast_id = $data['forecast_id'] ?? null;
+    if (!$forecast_id) {
+        throw new Exception("forecast_id が存在しません。");
+    }
+
+    try {
+        $stmt = $dbh->prepare("UPDATE monthly_forecast SET status = 'fixed' WHERE id = ?");
+        $stmt->execute([$forecast_id]);
+    } catch (Exception $e) {
+        throw new Exception("見通しの確定中にエラーが発生しました: " . $e->getMessage());
+    }
 }

@@ -18,6 +18,14 @@ function updateMonthlyPlan($data, $dbh = null)
         throw new Exception('plan_id が存在しません。');
     }
 
+    // ステータス確認（fixedならエラー）
+    $stmt = $dbh->prepare("SELECT status FROM monthly_plan WHERE id = ?");
+    $stmt->execute([$plan_id]);
+    $status = $stmt->fetchColumn();
+    if ($status === 'fixed') {
+        throw new Exception("この予定はすでに確定済みで、編集できません。");
+    }
+
     try {
         $dbh->beginTransaction();
 
@@ -77,21 +85,16 @@ function reflectToOutlook($plan_id, $dbh = null)
         $stmt->execute([$year, $month]);
 
         // mainテーブル挿入
-        $stmt = $dbh->prepare("
-            INSERT INTO monthly_outlook (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-            SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate
-            FROM monthly_plan WHERE id = ?
-        ");
+        $stmt = $dbh->prepare("INSERT INTO monthly_outlook (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
+                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate
+                               FROM monthly_plan WHERE id = ?");
         $stmt->execute([$plan_id]);
 
-        // outlook_id の取得
         $outlook_id = $dbh->lastInsertId();
 
-        // 明細をコピー
-        $stmt = $dbh->prepare("
-            INSERT INTO monthly_outlook_details (outlook_id, detail_id, amount)
-            SELECT ?, detail_id, amount FROM monthly_plan_details WHERE plan_id = ?
-        ");
+        // 予定明細を月末見込み明細にコピー
+        $stmt = $dbh->prepare("INSERT INTO monthly_outlook_details (outlook_id, detail_id, amount)
+                               SELECT ?, detail_id, amount FROM monthly_plan_details WHERE plan_id = ?");
         $stmt->execute([$outlook_id, $plan_id]);
 
         $dbh->commit();
@@ -105,4 +108,16 @@ function confirmMonthlyPlan($data, $dbh = null)
 {
     updateMonthlyPlan($data, $dbh);
     reflectToOutlook($data['plan_id'], $dbh);
+
+    $plan_id = $data['plan_id'] ?? null;
+    if (!$plan_id) {
+        throw new Exception("plan_id が存在しません。");
+    }
+
+    try {
+        $stmt = $dbh->prepare("UPDATE monthly_plan SET status = 'fixed' WHERE id = ?");
+        $stmt->execute([$plan_id]);
+    } catch (Exception $e) {
+        throw new Exception("予定の確定中にエラーが発生しました: " . $e->getMessage());
+    }
 }

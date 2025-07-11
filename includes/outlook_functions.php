@@ -18,10 +18,18 @@ function updateMonthlyOutlook($data, $dbh = null)
         throw new Exception('outlook_id が存在しません。');
     }
 
+    // ステータス確認（fixedならエラー）
+    $stmt = $dbh->prepare("SELECT status FROM monthly_outlook WHERE id = ?");
+    $stmt->execute([$outlook_id]);
+    $status = $stmt->fetchColumn();
+    if ($status === 'fixed') {
+        throw new Exception("この月末見込みはすでに確定済みで、編集できません。");
+    }
+
     try {
         $dbh->beginTransaction();
 
-        // 明細の更新・削除・追加
+        // 勘定科目詳細の更新・挿入・削除
         foreach ($amounts as $detail_id => $amount) {
             if ($amount === "" || $amount === null) {
                 $stmt = $dbh->prepare("DELETE FROM monthly_outlook_details WHERE outlook_id = ? AND detail_id = ?");
@@ -41,7 +49,7 @@ function updateMonthlyOutlook($data, $dbh = null)
             }
         }
 
-        // 時間・賃率の更新
+        // 時間・賃率の更新・追加
         $stmt = $dbh->prepare("UPDATE monthly_outlook SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? WHERE id = ?");
         $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $outlook_id]);
 
@@ -100,4 +108,16 @@ function confirmMonthlyOutlook($data, $dbh = null)
 {
     updateMonthlyOutlook($data, $dbh);
     reflectToResult($data['outlook_id'], $dbh);
+
+    $outlook_id = $data['outlook_id'] ?? null;
+    if (!$outlook_id) {
+        throw new Exception("outlook_id が存在しません。");
+    }
+
+    try {
+        $stmt = $dbh->prepare("UPDATE monthly_outlook SET status = 'fixed' WHERE id = ?");
+        $stmt->execute([$outlook_id]);
+    } catch (Exception $e) {
+        throw new Exception("月末見込みの確定中にエラーが発生しました: " . $e->getMessage());
+    }
 }
