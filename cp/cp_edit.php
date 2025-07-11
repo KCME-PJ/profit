@@ -177,6 +177,12 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?= htmlspecialchars($_GET['error']) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+            </div>
+        <?php endif; ?>
         <form id="mainForm" action="./cp_update.php" method="POST">
             <h4 class="mb-4" id="editTitle">CP 編集</h4>
 
@@ -354,6 +360,16 @@ try {
             document.getElementById('cpMode').value = 'fixed'; // 確定モード
             document.getElementById('mainForm').submit();
         });
+    </script>
+    <script>
+        if (window.history.replaceState) {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('error')) {
+                // クエリパラメータを削除して履歴を書き換え
+                url.searchParams.delete('error');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        }
     </script>
     <script src="../js/cp_edit.js"></script>
 </body>

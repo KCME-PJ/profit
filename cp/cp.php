@@ -152,6 +152,18 @@ foreach ($rows as $row) {
         </div>
     </nav>
     <div class="container mt-4">
+        <?php if (isset($_GET['success']) && $_GET['success'] === '1'): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                登録が完了しました。
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+            </div>
+        <?php endif; ?>
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?= htmlspecialchars($_GET['error']) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+            </div>
+        <?php endif; ?>
         <form action="process_cp.php" method="POST">
             <h4 class="mb-4">CP 計画入力</h4>
 
@@ -354,6 +366,26 @@ foreach ($rows as $row) {
                 });
             });
         });
+    </script>
+    <script>
+        if (window.history.replaceState) {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('success')) {
+                // クエリパラメータを削除して履歴を書き換え
+                url.searchParams.delete('success');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        }
+    </script>
+    <script>
+        if (window.history.replaceState) {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('error')) {
+                // クエリパラメータを削除して履歴を書き換え
+                url.searchParams.delete('error');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        }
     </script>
 
 </body>
