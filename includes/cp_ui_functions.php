@@ -8,7 +8,7 @@ require_once 'database.php';
  * - "fixed"：確定済
  *
  * @param int $year 対象の年
- * @param PDO|null $dbh DBハンドル（省略可）
+ * @param PDO|null $dbh DBハンドル
  * @return array [1 => 'none', 2 => 'draft', ..., 12 => 'fixed']
  */
 function getCpStatusByYear($year, $dbh = null)
@@ -63,4 +63,26 @@ function getAvailableCpYears($dbh = null)
 
     sort($years);
     return $years;
+}
+
+function getCpFixedStatusByYear(int $year, PDO $dbh): array
+{
+    $statuses = [];
+
+    for ($month = 1; $month <= 12; $month++) {
+        $statuses[$month] = 'none'; // 初期は未登録
+    }
+
+    $stmt = $dbh->prepare("SELECT month, status FROM monthly_cp WHERE year = :year");
+    $stmt->execute([':year' => $year]);
+
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $month = (int)$row['month'];
+        $status = $row['status'] ?? 'draft';
+        if (!in_array($status, ['fixed', 'draft'])) {
+            $status = 'draft';
+        }
+        $statuses[$month] = $status;
+    }
+    return $statuses;
 }

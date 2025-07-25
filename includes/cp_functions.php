@@ -2,6 +2,7 @@
 require_once '../includes/database.php';
 require_once '../includes/common_functions.php';
 
+// CPの登録処理
 function registerMonthlyCp($data, $dbh = null)
 {
     if (!$dbh) {
@@ -16,6 +17,9 @@ function registerMonthlyCp($data, $dbh = null)
     $hourly_rate = $data['hourly_rate'] ?? null;
     $detail_ids = $data['detail_ids'] ?? [];
     $amounts = $data['amounts'] ?? [];
+    $fulltime = $data['fulltime_count'] ?? 0;
+    $contract = $data['contract_count'] ?? 0;
+    $dispatch = $data['dispatch_count'] ?? 0;
 
     if (empty($year) || empty($month)) {
         throw new Exception('年度と月は必須項目です。');
@@ -42,14 +46,17 @@ function registerMonthlyCp($data, $dbh = null)
 
         // monthly_cp_time 登録
         $stmt = $dbh->prepare("INSERT INTO monthly_cp_time 
-            (monthly_cp_id, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-            VALUES (?, ?, ?, ?, ?)");
+            (monthly_cp_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $monthly_cp_id,
             $standard_hours,
             $overtime_hours,
             $transferred_hours,
-            $hourly_rate
+            $hourly_rate,
+            $fulltime,
+            $contract,
+            $dispatch
         ]);
 
         // monthly_cp_details 登録
@@ -69,6 +76,7 @@ function registerMonthlyCp($data, $dbh = null)
     }
 }
 
+// CPの更新処理
 function updateMonthlyCp($data, $dbh = null)
 {
     if (!$dbh) {
@@ -81,6 +89,9 @@ function updateMonthlyCp($data, $dbh = null)
     $overtime_hours = $data['overtime_hours'] ?? null;
     $transferred_hours = $data['transferred_hours'] ?? null;
     $hourly_rate = $data['hourly_rate'] ?? null;
+    $fulltime = $data['fulltime_count'] ?? null;
+    $contract = $data['contract_count'] ?? null;
+    $dispatch = $data['dispatch_count'] ?? null;
 
     if (!$monthly_cp_id) {
         throw new Exception('monthly_cp_id が存在しません。');
@@ -127,14 +138,14 @@ function updateMonthlyCp($data, $dbh = null)
 
         if ($existing_time) {
             $stmt = $dbh->prepare("UPDATE monthly_cp_time 
-                SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? 
+                SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?, fulltime_count = ?, contract_count = ?, dispatch_count = ?
                 WHERE id = ?");
-            $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $existing_time]);
+            $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime, $contract, $dispatch, $existing_time]);
         } else {
             $stmt = $dbh->prepare("INSERT INTO monthly_cp_time 
-                (monthly_cp_id, standard_hours, overtime_hours, transferred_hours, hourly_rate) 
-                VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$monthly_cp_id, $standard_hours, $overtime_hours, $transferred_hours, $hourly_rate]);
+                (monthly_cp_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$monthly_cp_id, $standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime, $contract, $dispatch]);
         }
 
         $dbh->commit();
@@ -144,6 +155,7 @@ function updateMonthlyCp($data, $dbh = null)
     }
 }
 
+// PCから見通しへ反映する処理
 function reflectToForecast($monthly_cp_id, $dbh = null)
 {
     if (!$dbh) {
@@ -166,21 +178,24 @@ function reflectToForecast($monthly_cp_id, $dbh = null)
         $stmt = $dbh->prepare("DELETE FROM monthly_forecast WHERE year = ? AND month = ?");
         $stmt->execute([$year, $month]);
 
-        $stmt = $dbh->prepare("SELECT standard_hours, overtime_hours, transferred_hours, hourly_rate 
+        $stmt = $dbh->prepare("SELECT standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count
                                FROM monthly_cp_time WHERE monthly_cp_id = ?");
         $stmt->execute([$monthly_cp_id]);
         $timeInfo = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $stmt = $dbh->prepare("INSERT INTO monthly_forecast 
-            (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-            VALUES (?, ?, ?, ?, ?, ?)");
+            (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $year,
             $month,
             $timeInfo['standard_hours'] ?? 0,
             $timeInfo['overtime_hours'] ?? 0,
             $timeInfo['transferred_hours'] ?? 0,
-            $timeInfo['hourly_rate'] ?? 0
+            $timeInfo['hourly_rate'] ?? 0,
+            $timeInfo['fulltime_count'] ?? 0,
+            $timeInfo['contract_count'] ?? 0,
+            $timeInfo['dispatch_count'] ?? 0
         ]);
 
         $forecast_id = $dbh->lastInsertId();

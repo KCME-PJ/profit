@@ -68,10 +68,14 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CP 計画入力</title>
+    <title>CP 編集</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/edit.css">
+    <script>
+        window.yearMonthData = <?= json_encode($years) ?>;
+    </script>
+    <script src="../js/cp_edit_head.js" defer></script>
 </head>
 
 <body>
@@ -176,26 +180,51 @@ try {
             </div>
         </div>
     </nav>
-    <div class="container mt-4">
+    <div class="container mt-2">
         <?php if (isset($_GET['error'])): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                 <?= htmlspecialchars($_GET['error']) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
+
         <form id="mainForm" action="./cp_update.php" method="POST">
-            <h4 class="mb-4" id="editTitle">CP 編集</h4>
+            <h4 class="mb-2" id="editTitle">CP 編集</h4>
+
+            <div class="mb-3">
+                <label class="form-label mb-1">
+                    各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
+                </label><br>
+
+                <div id="monthButtonsContainer">
+                    <?php
+                    $startMonth = 4;
+                    for ($i = 0; $i < 12; $i++):
+                        $month = ($startMonth + $i - 1) % 12 + 1;
+                        $colorClass = 'secondary';
+                    ?>
+                        <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
+                            <?= $month ?>月
+                        </button>
+                    <?php endfor; ?>
+                </div>
+            </div>
 
             <!-- 上部の入力フォーム -->
             <div class="info-box">
                 <div class="row">
+                    <?php
+                    $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
+                    ?>
                     <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
-                        <select id="yearSelect" name="year" class="form-select form-select-sm" onchange="updateMonths()">
-                            <option value="" disabled selected>年度を選択</option>
+                        <select id="yearSelect" name="year" class="form-select form-select-sm">
+                            <option value="" disabled <?= is_null($currentYear) ? 'selected' : '' ?>>年度を選択</option>
                             <?php foreach (array_keys($years) as $year): ?>
-                                <option value="<?= $year ?>"><?= $year ?>年度</option>
+                                <option value="<?= $year ?>" <?= (int)$year === $currentYear ? 'selected' : '' ?>>
+                                    <?= $year ?>年度
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -208,27 +237,39 @@ try {
                     <!-- 時間管理 -->
                     <input type="hidden" id="monthlyCpId" name="monthly_cp_id">
                     <div class="col-md-2">
-                        <label>定時間 (時間)</label>
+                        <label>定時間</label>
                         <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>残業時間 (時間)</label>
+                        <label>残業時間</label>
                         <input type="number" step="0.01" id="overtimeHours" name="overtime_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>時間移動 (時間)</label>
+                        <label>時間移動</label>
                         <input type="number" step="0.01" id="transferredHours" name="transferred_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>賃率 (¥)</label>
+                        <label>賃率</label>
                         <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
                     </div>
-                    <div class="row mt-3">
-                        <div class="col-md-4">
+                    <div class="row mt-2 mb-5">
+                        <div class="col-md-2">
+                            <label>正社員</label>
+                            <input type="number" id="fulltimeCount" name="fulltime_count" class="form-control form-control-sm" min="0">
+                        </div>
+                        <div class="col-md-2">
+                            <label>契約社員</label>
+                            <input type="number" id="contractCount" name="contract_count" class="form-control form-control-sm" min="0">
+                        </div>
+                        <div class="col-md-2">
+                            <label>派遣社員</label>
+                            <input type="number" id="dispatchCount" name="dispatch_count" class="form-control form-control-sm" min="0">
+                        </div>
+                        <div class="col-md-3">
                             <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
                             <strong>労務費：</strong> ¥<span id="laborCost">0</span>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span><br>
                             <strong>　総合計：</strong> ¥<span id="grandTotal">0</span>
                         </div>
@@ -236,6 +277,7 @@ try {
                 </div>
                 <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
                 <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#cpFixModal">確定</button>
+                <a href="#" id="excelExportBtn" class="btn btn-outline-primary btn-sm register-button3">Excel出力</a>
             </div>
 
             <!-- 勘定科目と詳細の入力フォーム -->
@@ -344,10 +386,6 @@ try {
         });
     </script>
     <script>
-        // 年ごとに対応する月データを保持
-        const yearMonthData = <?= json_encode($years) ?>;
-    </script>
-    <script>
         // CP修正モーダルの「はい」ボタンを押したとき
         document.getElementById('confirmSubmit').addEventListener('click', function() {
             document.getElementById('cpMode').value = 'update'; // 修正モード
@@ -371,7 +409,7 @@ try {
             }
         }
     </script>
-    <script src="../js/cp_edit.js"></script>
+    <script src="../js/cp_edit_body.js"></script>
 </body>
 
 </html>

@@ -22,7 +22,11 @@ try {
             mcpt.standard_hours,
             mcpt.overtime_hours,
             mcpt.transferred_hours,
-            mcpt.hourly_rate
+            mcpt.hourly_rate,
+            mcpt.fulltime_count ,
+            mcpt.contract_count,
+            mcpt.dispatch_count
+
         FROM monthly_cp mcp
         LEFT JOIN monthly_cp_time mcpt ON mcp.id = mcpt.monthly_cp_id
         WHERE mcp.year = :year AND mcp.month = :month
@@ -50,6 +54,9 @@ try {
         'overtime_hours' => $timeData['overtime_hours'] ?? 0,
         'transferred_hours' => $timeData['transferred_hours'] ?? 0,
         'hourly_rate' => $timeData['hourly_rate'] ?? 0,
+        'fulltime_count' => $timeData['fulltime_count'] ?? 0,
+        'contract_count' => $timeData['contract_count'] ?? 0,
+        'dispatch_count' => $timeData['dispatch_count'] ?? 0,
         'details' => array_column($detailsData, 'amount', 'detail_id'),
     ]);
 } catch (Exception $e) {

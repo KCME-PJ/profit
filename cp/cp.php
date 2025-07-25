@@ -1,5 +1,6 @@
 <?php
 require_once '../includes/database.php';
+require_once '../includes/cp_ui_functions.php';
 $dbh = getDb();
 
 // データ取得
@@ -151,7 +152,7 @@ foreach ($rows as $row) {
             </div>
         </div>
     </nav>
-    <div class="container mt-4">
+    <div class="container mt-2">
         <?php if (isset($_GET['success']) && $_GET['success'] === '1'): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 登録が完了しました。
@@ -165,26 +166,49 @@ foreach ($rows as $row) {
             </div>
         <?php endif; ?>
         <form action="process_cp.php" method="POST">
-            <h4 class="mb-4">CP 計画入力</h4>
+            <h4 class="mb-2">CP 計画入力</h4>
+            <?php
+            $availableYears = getAvailableCpYears($dbh);
+            $currentYear = (int)($_GET['year'] ?? date('Y'));
+            $cpStatusList = getCpStatusByYear($currentYear, $dbh);
+            $statusColors = [
+                'fixed' => 'success',  // 緑
+                'draft' => 'primary',  // 青
+                'none' => 'secondary', // 灰色
+            ];
+            ?>
 
+            <div class="mb-3">
+                <label class="form-label mb-1">各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span></label><br>
+                <?php
+                $startMonth = 4; // 会計年度開始月
+                for ($i = 0; $i < 12; $i++):
+                    $month = ($startMonth + $i - 1) % 12 + 1;
+                    $status = $cpStatusList[$month];
+                    $colorClass = $statusColors[$status] ?? 'secondary';
+                ?>
+                    <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
+                        <?= $month ?>月
+                    </button>
+                <?php endfor; ?>
+            </div>
             <!-- 上部の入力フォーム -->
             <div class="info-box">
                 <div class="row">
-                    <!-- 年度と月の選択 -->
+                    <!-- 年度の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
-                        <select id="yearSelect" name="year" class="form-select form-select-sm">
-                            <?php
-                            $currentYear = date("Y");
-                            for ($i = $currentYear - 2; $i <= $currentYear + 2; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $currentYear ? 'selected' : '' ?>>
-                                    <?= $i ?>年度
+                        <select id="yearSelect" name="year" class="form-select form-select-sm" onchange="onYearChange()">
+                            <?php foreach ($availableYears as $year): ?>
+                                <option value="<?= $year ?>" <?= $year == $currentYear ? 'selected' : '' ?>>
+                                    <?= $year ?>年度
                                 </option>
-                            <?php endfor; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
+                    <!-- 月の選択 -->
                     <?php
-                    $selectedMonth = 4; // ここで選択したい月を指定
+                    $selectedMonth = 4;
                     ?>
 
                     <div class="col-md-2">
@@ -207,27 +231,39 @@ foreach ($rows as $row) {
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label>定時間 (時間)</label>
+                        <label>定時間</label>
                         <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>残業時間 (時間)</label>
+                        <label>残業時間</label>
                         <input type="number" step="0.01" id="overtimeHours" name="overtime_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>時間移動 (時間)</label>
+                        <label>時間移動</label>
                         <input type="number" step="0.01" id="transferredHours" name="transferred_hours" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label>賃率 (¥)</label>
+                        <label>賃率</label>
                         <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
                     </div>
-                    <div class="row mt-3">
-                        <div class="col-md-4">
+                    <div class="row mt-2 mb-5">
+                        <div class="col-md-2">
+                            <label>正社員</label>
+                            <input type="number" id="fulltimeCount" name="fulltime_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['fulltime_count'] ?? '') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label>契約社員</label>
+                            <input type="number" id="contractCount" name="contract_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['contract_count'] ?? '') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label>派遣社員</label>
+                            <input type="number" id="dispatchCount" name="dispatch_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['dispatch_count'] ?? '') ?>">
+                        </div>
+                        <div class="col-md-3">
                             <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
                             <strong>労務費：</strong> ¥<span id="laborCost">0</span>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span><br>
                             <strong>　総合計：</strong> ¥<span id="grandTotal">0</span>
                         </div>
@@ -385,6 +421,14 @@ foreach ($rows as $row) {
                 url.searchParams.delete('error');
                 window.history.replaceState({}, document.title, url.pathname + url.search);
             }
+        }
+    </script>
+    <script>
+        function onYearChange() {
+            const year = document.getElementById('yearSelect').value;
+            const url = new URL(window.location.href);
+            url.searchParams.set('year', year);
+            window.location.href = url.toString(); // リロードして反映
         }
     </script>
 
