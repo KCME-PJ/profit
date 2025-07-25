@@ -11,6 +11,7 @@ try {
     $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
 
     if (!$year || !$month) {
+        http_response_code(400);
         throw new Exception("パラメータが不足しています。");
     }
 
