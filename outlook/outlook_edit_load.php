@@ -6,15 +6,15 @@ header('Content-Type: application/json');
 try {
     $dbh = getDb();
 
-    // パラメータの取得とバリデーション
     $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
     $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
 
     if (!$year || !$month) {
+        http_response_code(400);
         throw new Exception("パラメータが不足しています。");
     }
 
-    // 概算実績（本体）データの取得
+    // 月末見込みデータの取得
     $stmt = $dbh->prepare("
         SELECT * 
         FROM monthly_outlook 
@@ -32,12 +32,15 @@ try {
             'overtime_hours' => 0,
             'transferred_hours' => 0,
             'hourly_rate' => 0,
+            'fulltime_count' => 0,
+            'contract_count' => 0,
+            'dispatch_count' => 0,
             'details' => []
         ]);
         exit;
     }
 
-    // 詳細データ（detail_id ⇒ amount）の取得
+    // 詳細データの取得
     $stmt = $dbh->prepare("
         SELECT detail_id, amount
         FROM monthly_outlook_details
@@ -56,6 +59,9 @@ try {
         'overtime_hours' => (float)$outlook['overtime_hours'],
         'transferred_hours' => (float)$outlook['transferred_hours'],
         'hourly_rate' => (float)$outlook['hourly_rate'],
+        'fulltime_count' => (int)$outlook['fulltime_count'],
+        'contract_count' => (int)$outlook['contract_count'],
+        'dispatch_count' => (int)$outlook['dispatch_count'],
         'details' => $details
     ]);
 } catch (Exception $e) {

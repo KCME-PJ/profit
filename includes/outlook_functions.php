@@ -13,6 +13,9 @@ function updateMonthlyOutlook($data, $dbh = null)
     $overtime_hours = $data['overtime_hours'] ?? 0;
     $transferred_hours = $data['transferred_hours'] ?? 0;
     $hourly_rate = $data['hourly_rate'] ?? 0;
+    $fulltime_count = $data['fulltime_count'] ?? 0;
+    $contract_count = $data['contract_count'] ?? 0;
+    $dispatch_count = $data['dispatch_count'] ?? 0;
 
     if (!$outlook_id) {
         throw new Exception('outlook_id が存在しません。');
@@ -49,9 +52,9 @@ function updateMonthlyOutlook($data, $dbh = null)
             }
         }
 
-        // 時間・賃率の更新・追加
-        $stmt = $dbh->prepare("UPDATE monthly_outlook SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? WHERE id = ?");
-        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $outlook_id]);
+        // 時間・人数などの更新
+        $stmt = $dbh->prepare("UPDATE monthly_outlook SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?, fulltime_count = ?, contract_count = ?, dispatch_count = ? WHERE id = ?");
+        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime_count, $contract_count, $dispatch_count, $outlook_id]);
 
         $dbh->commit();
     } catch (Exception $e) {
@@ -77,22 +80,22 @@ function reflectToResult($outlook_id, $dbh = null)
     $year = $outlook['year'];
     $month = $outlook['month'];
 
-    $dbh->beginTransaction();
-
     try {
-        // 既存 result を削除
+        $dbh->beginTransaction();
+
+        // 概算実績テーブルを削除してから再挿入
         $stmt = $dbh->prepare("DELETE FROM monthly_result WHERE year = ? AND month = ?");
         $stmt->execute([$year, $month]);
 
-        // 時間・賃率データを挿入
-        $stmt = $dbh->prepare("INSERT INTO monthly_result (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate
+        // 時間・賃率情報を取得して挿入
+        $stmt = $dbh->prepare("INSERT INTO monthly_result (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
+                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count
                                FROM monthly_outlook WHERE id = ?");
         $stmt->execute([$outlook_id]);
 
         $result_id = $dbh->lastInsertId();
 
-        // 明細をコピー
+        // 月末見込み明細を概算実績明細にコピー
         $stmt = $dbh->prepare("INSERT INTO monthly_result_details (result_id, detail_id, amount)
                                SELECT ?, detail_id, amount FROM monthly_outlook_details WHERE outlook_id = ?");
         $stmt->execute([$result_id, $outlook_id]);
@@ -104,19 +107,15 @@ function reflectToResult($outlook_id, $dbh = null)
     }
 }
 
+
 function confirmMonthlyOutlook($data, $dbh = null)
 {
     updateMonthlyOutlook($data, $dbh);
     reflectToResult($data['outlook_id'], $dbh);
 
-    $outlook_id = $data['outlook_id'] ?? null;
-    if (!$outlook_id) {
-        throw new Exception("outlook_id が存在しません。");
-    }
-
     try {
         $stmt = $dbh->prepare("UPDATE monthly_outlook SET status = 'fixed' WHERE id = ?");
-        $stmt->execute([$outlook_id]);
+        $stmt->execute([$data['outlook_id']]);
     } catch (Exception $e) {
         throw new Exception("月末見込みの確定中にエラーが発生しました: " . $e->getMessage());
     }
