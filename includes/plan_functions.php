@@ -13,6 +13,9 @@ function updateMonthlyPlan($data, $dbh = null)
     $overtime_hours = $data['overtime_hours'] ?? 0;
     $transferred_hours = $data['transferred_hours'] ?? 0;
     $hourly_rate = $data['hourly_rate'] ?? 0;
+    $fulltime_count = $data['fulltime_count'] ?? 0;
+    $contract_count = $data['contract_count'] ?? 0;
+    $dispatch_count = $data['dispatch_count'] ?? 0;
 
     if (!$plan_id) {
         throw new Exception('plan_id が存在しません。');
@@ -50,8 +53,8 @@ function updateMonthlyPlan($data, $dbh = null)
         }
 
         // 時間・賃率の更新・追加
-        $stmt = $dbh->prepare("UPDATE monthly_plan SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? WHERE id = ?");
-        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $plan_id]);
+        $stmt = $dbh->prepare("UPDATE monthly_plan SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?, fulltime_count = ?, contract_count = ?, dispatch_count = ? WHERE id = ?");
+        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime_count, $contract_count, $dispatch_count, $plan_id]);
 
         $dbh->commit();
     } catch (Exception $e) {
@@ -77,16 +80,16 @@ function reflectToOutlook($plan_id, $dbh = null)
     $year = $plan['year'];
     $month = $plan['month'];
 
-    try {
-        $dbh->beginTransaction();
+    $dbh->beginTransaction();
 
+    try {
         // 月末見込みテーブルを削除してから再挿入
         $stmt = $dbh->prepare("DELETE FROM monthly_outlook WHERE year = ? AND month = ?");
         $stmt->execute([$year, $month]);
 
-        // mainテーブル挿入
-        $stmt = $dbh->prepare("INSERT INTO monthly_outlook (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate
+        // 時間・賃率情報を取得して挿入
+        $stmt = $dbh->prepare("INSERT INTO monthly_outlook (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
+                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count
                                FROM monthly_plan WHERE id = ?");
         $stmt->execute([$plan_id]);
 
@@ -109,14 +112,9 @@ function confirmMonthlyPlan($data, $dbh = null)
     updateMonthlyPlan($data, $dbh);
     reflectToOutlook($data['plan_id'], $dbh);
 
-    $plan_id = $data['plan_id'] ?? null;
-    if (!$plan_id) {
-        throw new Exception("plan_id が存在しません。");
-    }
-
     try {
         $stmt = $dbh->prepare("UPDATE monthly_plan SET status = 'fixed' WHERE id = ?");
-        $stmt->execute([$plan_id]);
+        $stmt->execute([$data['plan_id']]);
     } catch (Exception $e) {
         throw new Exception("予定の確定中にエラーが発生しました: " . $e->getMessage());
     }
