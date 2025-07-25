@@ -1,7 +1,6 @@
 <?php
 require_once '../includes/database.php';
 
-// データベース接続
 $dbh = getDb();
 
 try {
