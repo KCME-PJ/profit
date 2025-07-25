@@ -81,14 +81,27 @@ function loadForecastData() {
 
 // DOM読み込み後にイベントバインド
 document.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('yearSelect').addEventListener('change', () => {
-        const selectedYear = document.getElementById('yearSelect').value;
+    const yearSelect = document.getElementById('yearSelect');
+    const monthSelect = document.getElementById('monthSelect');
+
+    yearSelect.addEventListener('change', () => {
+        const selectedYear = yearSelect.value;
+        if (!selectedYear) return;
+
         updateMonths();
         updateForecastStatusButtons(selectedYear);
-        loadForecastData();
+
+        // 月の値が既にあれば読み込み（自動選択時用)
+        if (monthSelect.value) {
+            loadForecastData();
+        }
     });
 
-    document.getElementById('monthSelect').addEventListener('change', loadForecastData);
+    monthSelect.addEventListener('change', () => {
+        if (monthSelect.value) {
+            loadForecastData();
+        }
+    });
 
     // エクセル出力ボタンの処理
     const exportBtn = document.getElementById('excelExportBtn');
