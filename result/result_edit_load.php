@@ -11,10 +11,11 @@ try {
     $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
 
     if (!$year || !$month) {
+        http_response_code(400);
         throw new Exception("パラメータが不足しています。");
     }
 
-    // 概算実績（本体）データの取得
+    // 概算実績データの取得
     $stmt = $dbh->prepare("
         SELECT * 
         FROM monthly_result 
@@ -32,12 +33,15 @@ try {
             'overtime_hours' => 0,
             'transferred_hours' => 0,
             'hourly_rate' => 0,
+            'fulltime_count' => 0,
+            'contract_count' => 0,
+            'dispatch_count' => 0,
             'details' => []
         ]);
         exit;
     }
 
-    // 概算実績明細の取得
+    // 詳細データの取得
     $stmt = $dbh->prepare("
         SELECT detail_id, amount
         FROM monthly_result_details
@@ -56,6 +60,9 @@ try {
         'overtime_hours' => (float)$result['overtime_hours'],
         'transferred_hours' => (float)$result['transferred_hours'],
         'hourly_rate' => (float)$result['hourly_rate'],
+        'fulltime_count' => (int)$result['fulltime_count'],
+        'contract_count' => (int)$result['contract_count'],
+        'dispatch_count' => (int)$result['dispatch_count'],
         'details' => $details
     ]);
 } catch (Exception $e) {

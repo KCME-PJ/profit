@@ -13,6 +13,9 @@ function updateMonthlyResult($data, $dbh = null)
     $overtime_hours = $data['overtime_hours'] ?? 0;
     $transferred_hours = $data['transferred_hours'] ?? 0;
     $hourly_rate = $data['hourly_rate'] ?? 0;
+    $fulltime_count = $data['fulltime_count'] ?? 0;
+    $contract_count = $data['contract_count'] ?? 0;
+    $dispatch_count = $data['dispatch_count'] ?? 0;
 
     if (!$result_id) {
         throw new Exception('result_id が存在しません。');
@@ -50,9 +53,9 @@ function updateMonthlyResult($data, $dbh = null)
             }
         }
 
-        // 時間・賃率の更新
-        $stmt = $dbh->prepare("UPDATE monthly_result SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? WHERE id = ?");
-        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $result_id]);
+        // 時間・賃率・人数などの更新
+        $stmt = $dbh->prepare("UPDATE monthly_result SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?, fulltime_count = ?, contract_count = ?, dispatch_count = ? WHERE id = ?");
+        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime_count, $contract_count, $dispatch_count, $result_id]);
 
         $dbh->commit();
     } catch (Exception $e) {
@@ -65,14 +68,13 @@ function confirmMonthlyResult($data, $dbh = null)
 {
     updateMonthlyResult($data, $dbh);
 
-    $result_id = $data['result_id'] ?? null;
-    if (!$result_id) {
-        throw new Exception("result_id が存在しません。");
+    if (!$dbh) {
+        $dbh = getDb();
     }
 
     try {
         $stmt = $dbh->prepare("UPDATE monthly_result SET status = 'fixed' WHERE id = ?");
-        $stmt->execute([$result_id]);
+        $stmt->execute([$data['result_id']]);
     } catch (Exception $e) {
         throw new Exception("概算実績の確定中にエラーが発生しました: " . $e->getMessage());
     }
