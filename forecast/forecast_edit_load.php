@@ -32,6 +32,9 @@ try {
             'overtime_hours' => 0,
             'transferred_hours' => 0,
             'hourly_rate' => 0,
+            'fulltime_count' => 0,
+            'contract_count' => 0,
+            'dispatch_count' => 0,
             'details' => []
         ]);
         exit;
@@ -56,6 +59,9 @@ try {
         'overtime_hours' => (float)$forecast['overtime_hours'],
         'transferred_hours' => (float)$forecast['transferred_hours'],
         'hourly_rate' => (float)$forecast['hourly_rate'],
+        'fulltime_count' => (int)$forecast['fulltime_count'],
+        'contract_count' => (int)$forecast['contract_count'],
+        'dispatch_count' => (int)$forecast['dispatch_count'],
         'details' => $details
     ]);
 } catch (Exception $e) {

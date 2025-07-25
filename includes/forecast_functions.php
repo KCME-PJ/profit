@@ -13,6 +13,9 @@ function updateMonthlyForecast($data, $dbh = null)
     $overtime_hours = $data['overtime_hours'] ?? 0;
     $transferred_hours = $data['transferred_hours'] ?? 0;
     $hourly_rate = $data['hourly_rate'] ?? 0;
+    $fulltime_count = $data['fulltime_count'] ?? 0;
+    $contract_count = $data['contract_count'] ?? 0;
+    $dispatch_count = $data['dispatch_count'] ?? 0;
 
     if (!$forecast_id) {
         throw new Exception('forecast_id が存在しません。');
@@ -50,8 +53,8 @@ function updateMonthlyForecast($data, $dbh = null)
         }
 
         // 時間・賃率の更新・追加
-        $stmt = $dbh->prepare("UPDATE monthly_forecast SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ? WHERE id = ?");
-        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $forecast_id]);
+        $stmt = $dbh->prepare("UPDATE monthly_forecast SET standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?, fulltime_count = ?, contract_count = ?, dispatch_count = ? WHERE id = ?");
+        $stmt->execute([$standard_hours, $overtime_hours, $transferred_hours, $hourly_rate, $fulltime_count, $contract_count, $dispatch_count, $forecast_id]);
 
         $dbh->commit();
     } catch (Exception $e) {
@@ -85,8 +88,8 @@ function reflectToPlan($forecast_id, $dbh = null)
         $stmt->execute([$year, $month]);
 
         // 時間・賃率情報を取得
-        $stmt = $dbh->prepare("INSERT INTO monthly_plan (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate)
-                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate
+        $stmt = $dbh->prepare("INSERT INTO monthly_plan (year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
+                               SELECT year, month, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count
                                FROM monthly_forecast WHERE id = ?");
         $stmt->execute([$forecast_id]);
 
@@ -109,14 +112,9 @@ function confirmMonthlyForecast($data, $dbh = null)
     updateMonthlyForecast($data, $dbh);
     reflectToPlan($data['forecast_id'], $dbh);
 
-    $forecast_id = $data['forecast_id'] ?? null;
-    if (!$forecast_id) {
-        throw new Exception("forecast_id が存在しません。");
-    }
-
     try {
         $stmt = $dbh->prepare("UPDATE monthly_forecast SET status = 'fixed' WHERE id = ?");
-        $stmt->execute([$forecast_id]);
+        $stmt->execute([$data['forecast_id']]);
     } catch (Exception $e) {
         throw new Exception("見通しの確定中にエラーが発生しました: " . $e->getMessage());
     }
