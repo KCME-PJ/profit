@@ -16,15 +16,42 @@ try {
         throw new Exception('monthly_cp_id が存在しません。');
     }
 
+    // officeTimeData を配列化（営業所ごとの時間・人数データのみ）
+    $officeTimeData = json_decode($_POST['officeTimeData'] ?? '[]', true);
+    if (!is_array($officeTimeData)) {
+        throw new Exception('officeTimeData が存在しません。');
+    }
+
+    // 勘定科目明細
+    $detailData = [
+        'detail_ids' => $_POST['detail_ids'] ?? [],
+        'amounts' => $_POST['amounts'] ?? []
+    ];
+
     if ($actionType === 'update') {
-        updateMonthlyCp($_POST, $dbh);
+        // --- CP更新処理 ---
+        $dataForUpdate = [
+            'monthly_cp_id' => $monthly_cp_id,
+            'officeTimeData' => $officeTimeData,
+            'detail_ids' => $detailData['detail_ids'],
+            'amounts' => $detailData['amounts']
+        ];
+        updateMonthlyCp($dataForUpdate, $dbh);
         $message = "CPの更新が完了しました！";
     } elseif ($actionType === 'fixed') {
-        confirmMonthlyCp($_POST, $dbh);
+        // --- CP確定処理（update + status固定 + forecast反映） ---
+        $dataForFix = [
+            'monthly_cp_id' => $monthly_cp_id,
+            'officeTimeData' => $officeTimeData,
+            'detail_ids' => $detailData['detail_ids'],
+            'amounts' => $detailData['amounts']
+        ];
+        confirmMonthlyCp($dataForFix, $dbh);
         $message = "CPの確定が完了しました！";
     } else {
         throw new Exception("不正な操作です。");
     }
+
 ?>
     <!DOCTYPE html>
     <html lang="ja">
@@ -54,3 +81,4 @@ try {
     header("Location: cp_edit.php?error={$error}");
     exit;
 }
+?>

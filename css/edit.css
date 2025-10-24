@@ -23,7 +23,7 @@
             /* 絶対位置を指定 */
             bottom: 10px;
             /* 下から10pxの位置 */
-            right: 160px;
+            right: 75px;
             /* 右から260pxの位置 */
         }
 
@@ -32,15 +32,8 @@
             /* 絶対位置を指定 */
             bottom: 10px;
             /* 下から10pxの位置 */
-            right: 100px;
+            right: 15px;
             /* 右から200pxの位置 */
-        }
-
-        .register-button3 {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            /* 右から110pxの位置 */
         }
 
         .info-box input {

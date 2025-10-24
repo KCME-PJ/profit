@@ -28,59 +28,11 @@ function getPlanStatusByYear($year, $dbh = null)
         $month = (int)$row['month'];
         $status = $row['status'] ?? 'draft';
         if (!in_array($status, ['fixed', 'draft'])) {
-            $status = 'draft'; // 未確定でも何か入っていれば draft 扱い
+            // DBに予期せぬ値が入っていた場合も draft 扱い
+            $status = 'draft';
         }
         $statusList[$month] = $status;
     }
 
     return $statusList;
-}
-
-/**
- * 登録済の年度一覧 + 現在年度 + 翌年度 を取得
- *
- * @param PDO|null $dbh
- * @return int[] 年度の配列（昇順）
- */
-function getAvailablePlanYears($dbh = null)
-{
-    if (!$dbh) {
-        $dbh = getDb();
-    }
-
-    $stmt = $dbh->query("SELECT DISTINCT year FROM monthly_plan ORDER BY year ASC");
-    $years = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-
-    $currentYear = (int)date('Y');
-    $nextYear = $currentYear + 1;
-
-    if (!in_array($currentYear, $years)) {
-        $years[] = $currentYear;
-    }
-    if (!in_array($nextYear, $years)) {
-        $years[] = $nextYear;
-    }
-
-    sort($years);
-    return $years;
-}
-
-function getPlanFixedStatusByYear(int $year, PDO $dbh): array
-{
-    $statuses = [];
-
-    for ($month = 1; $month <= 12; $month++) {
-        $statuses[$month] = 'draft'; // 初期は未確定
-    }
-
-    $stmt = $dbh->prepare("SELECT month, status FROM monthly_plan WHERE year = :year");
-    $stmt->execute([':year' => $year]);
-
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $month = (int)$row['month'];
-        if ($row['status'] === 'fixed') {
-            $statuses[$month] = 'fixed';
-        }
-    }
-    return $statuses;
 }

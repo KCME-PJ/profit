@@ -13,7 +13,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // 月の選択肢更新
         monthSelect.innerHTML = '<option value="" disabled selected>月を選択</option>';
-        availableMonths.forEach(month => {
+
+        // 4月～3月の順にソート
+        const sortedMonths = [...availableMonths].sort((a, b) => {
+            const getSortValue = m => (m >= 4 ? m : m + 12); // 4〜12はそのまま、1〜3は13〜15として比較
+            return getSortValue(a) - getSortValue(b);
+        });
+
+        sortedMonths.forEach(month => {
             const option = document.createElement('option');
             option.value = month;
             option.textContent = month + '月';
@@ -51,10 +58,11 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => console.error('月ボタン取得エラー:', err));
     });
 
-    // エクセル出力ボタンの処理
-    const exportBtn = document.getElementById('excelExportBtn');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', function (e) {
+    // エクセル集計ボタンの処理
+    const exportButtons = document.querySelectorAll('[data-export-type]');
+
+    exportButtons.forEach(button => {
+        button.addEventListener('click', function (e) {
             e.preventDefault();
 
             const year = yearSelect.value;
@@ -65,8 +73,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            const url = `cp_export_excel.php?year=${year}&month=${month}`;
+            const type = button.getAttribute('data-export-type');
+            let url = '';
+
+            if (type === 'summary') {
+                url = `cp_export_excel.php?year=${year}&month=${month}`;
+            } else if (type === 'details') {
+                url = `cp_export_excel_details.php?year=${year}&month=${month}`;
+            }
             window.location.href = url;
         });
-    }
+    });
 });

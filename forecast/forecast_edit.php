@@ -1,5 +1,6 @@
 <?php
 require_once '../includes/database.php';
+require_once '../includes/forecast_ui_functions.php';
 
 // データベース接続
 $dbh = getDb();
@@ -47,9 +48,15 @@ try {
         }
     }
 } catch (Exception $e) {
-    echo "エラー: " . $e->getMessage();
+    // エラーハンドリング
     $accounts = [];
 }
+
+// 営業所リスト
+$stmt = $dbh->query("SELECT * FROM offices ORDER BY id ASC");
+$offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$selectedOffice = $offices[0]['id'] ?? 0;
 ?>
 
 <!DOCTYPE html>
@@ -102,11 +109,6 @@ try {
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -115,11 +117,6 @@ try {
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -142,45 +139,89 @@ try {
                     </li>
                 </ul>
             </div>
+            <div class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="bi bi-person-fill"></i>&nbsp;
+                            user name さん
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
         </div>
     </nav>
 
     <div class="container mt-2">
         <?php if (isset($_GET['error'])): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert">
                 <?= htmlspecialchars($_GET['error']) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
+        <?php if (isset($_GET['success']) && $_GET['success'] === '1'):
+            $sy = isset($_GET['year']) ? (int)$_GET['year'] : null;
+            $sm = isset($_GET['month']) ? (int)$_GET['month'] : null;
+        ?>
+            <div id="successAlert" class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php if ($sy && $sm): ?>
+                    <?= htmlspecialchars("{$sy}年度 {$sm}月 を登録しました。") ?>
+                <?php else: ?>
+                    登録が完了しました。
+                <?php endif; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+            </div>
+        <?php endif; ?>
         <form id="mainForm" action="forecast_update.php" method="POST">
-            <h4 class="mb-2">見通し 編集</h4>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <h4 class="mb-2" id="editTitle">見通し 編集</h4>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label mb-1">
+                        各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
+                    </label><br>
 
-            <div class="mb-3">
-                <label class="form-label mb-1">
-                    各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
-                </label><br>
-
-                <div id="monthButtonsContainer">
-                    <?php
-                    $startMonth = 4;
-                    for ($i = 0; $i < 12; $i++):
-                        $month = ($startMonth + $i - 1) % 12 + 1;
-                        $colorClass = 'secondary';
-                    ?>
-                        <button type="button" id="monthBtn<?= $month ?>" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
-                            <?= $month ?>月
-                        </button>
-                    <?php endfor; ?>
+                    <div id="monthButtonsContainer">
+                        <?php
+                        $startMonth = 4;
+                        for ($i = 0; $i < 12; $i++):
+                            $month = ($startMonth + $i - 1) % 12 + 1;
+                            $colorClass = 'secondary';
+                        ?>
+                            <button type="button" id="monthBtn<?= $month ?>" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
+                                <?= $month ?>月
+                            </button>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+                <div class="col-md-2 mt-4">
+                    <a href="#" id="excelExportBtn1" class="btn btn-outline-primary btn-sm" data-export-type="summary">Excel出力（集計）</a>
+                </div>
+                <div class="col-md-2 mt-4">
+                    <a href="#" id="excelExportBtn2" class="btn btn-outline-primary btn-sm" data-export-type="details">Excel出力（明細）</a>
                 </div>
             </div>
+
+            <!-- 上部の入力フォーム -->
             <div class="info-box">
-                <div class="row">
+                <div class="row align-items-end mb-2">
+                    <?php
+                    $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
+                    ?>
+                    <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
-                        <select id="yearSelect" name="year" class="form-select form-select-sm" onchange="updateMonths()">
-                            <option value="" disabled selected>年度を選択</option>
+                        <select id="yearSelect" name="year" class="form-select form-select-sm">
+                            <option value="" disabled <?= is_null($currentYear) ? 'selected' : '' ?>>年度を選択</option>
                             <?php foreach (array_keys($years) as $year): ?>
-                                <option value="<?= $year ?>"><?= $year ?>年度</option>
+                                <option value="<?= $year ?>" <?= (int)$year === $currentYear ? 'selected' : '' ?>>
+                                    <?= $year ?>年度
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -190,57 +231,73 @@ try {
                             <option value="" disabled selected>月を選択</option>
                         </select>
                     </div>
-                    <input type="hidden" id="forecastId" name="forecast_id">
                     <div class="col-md-2">
-                        <label>定時間 (時間)</label>
-                        <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
+                        <label>営業所</label>
+                        <select id="officeSelect" class="form-select form-select-sm">
+                            <?php foreach ($offices as $office): ?>
+                                <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($office['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
-                    <div class="col-md-2">
-                        <label>残業時間 (時間)</label>
-                        <input type="number" step="0.01" id="overtimeHours" name="overtime_hours" class="form-control form-control-sm" placeholder="0">
+                    <div class="col-md-3">
+                        <strong>総時間：</strong><span id="totalHours">0.00 時間</span><br>
+                        <strong>労務費：</strong>¥<span id="laborCost">0</span>
                     </div>
-                    <div class="col-md-2">
-                        <label>時間移動 (時間)</label>
-                        <input type="number" step="0.01" id="transferredHours" name="transferred_hours" class="form-control form-control-sm" placeholder="0">
-                    </div>
-                    <div class="col-md-2">
-                        <label>賃率 (¥)</label>
-                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
-                    </div>
-                    <div class="row mt-2 mb-5">
-                        <div class="col-md-2">
-                            <label>正社員</label>
-                            <input type="number" id="fulltimeCount" name="fulltime_count" class="form-control form-control-sm" min="0">
-                        </div>
-                        <div class="col-md-2">
-                            <label>契約社員</label>
-                            <input type="number" id="contractCount" name="contract_count" class="form-control form-control-sm" min="0">
-                        </div>
-                        <div class="col-md-2">
-                            <label>派遣社員</label>
-                            <input type="number" id="dispatchCount" name="dispatch_count" class="form-control form-control-sm" min="0">
-                        </div>
-                        <div class="col-md-3">
-                            <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
-                            <strong>労務費：</strong> ¥<span id="laborCost">0</span>
-                        </div>
-                        <div class="col-md-3">
-                            <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span><br>
-                            <strong>　総合計：</strong> ¥<span id="grandTotal">0</span>
-                        </div>
+                    <div class="col-md-3">
+                        <strong>経費合計：</strong>¥<span id="expenseTotal">0</span><br>
+                        <strong>総合計：</strong>¥<span id="grandTotal">0</span>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline-danger btn-sm register-button1 mt-3" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
-                <button type="button" class="btn btn-outline-success btn-sm register-button2 mt-3" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
-                <a href="#" id="excelExportBtn" class="btn btn-outline-primary btn-sm register-button3">Excel出力</a>
+                <div class="row align-items-end mb-2">
+                    <input type="hidden" id="monthlyForecastId" name="monthly_forecast_id">
+                    <div class="col-md-2">
+                        <label>賃率</label>
+                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>定時間</label>
+                        <input type="number" step="0.01" id="standardHours" class="form-control form-control-sm" data-field="standard_hours" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>残業時間</label>
+                        <input type="number" step="0.01" id="overtimeHours" class="form-control form-control-sm" data-field="overtime_hours" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>時間移動</label>
+                        <input type="number" step="0.01" id="transferredHours" class="form-control form-control-sm" data-field="transferred_hours" placeholder="0">
+                    </div>
+                    <div class="col-md-4"></div>
+                </div>
+
+                <div class="row align-items-end mb-2">
+                    <div class="col-md-2">
+                        <label>正社員</label>
+                        <input type="number" id="fulltimeCount" class="form-control form-control-sm" data-field="fulltime_count" min="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>契約社員</label>
+                        <input type="number" id="contractCount" class="form-control form-control-sm" data-field="contract_count" min="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label>派遣社員</label>
+                        <input type="number" id="dispatchCount" class="form-control form-control-sm" data-field="dispatch_count" min="0">
+                    </div>
+                    <div class="col-md-6"></div>
+                </div>
+                <input type="hidden" name="officeTimeData" id="officeTimeData">
+                <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
+                <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
             </div>
 
+            <!-- 勘定科目と詳細の入力フォーム -->
             <div class="table-container">
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
                             <th>勘定科目/詳細</th>
-                            <th style="width: 150px;">金額</th>
+                            <th style="width: 150px;">CP</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -262,7 +319,8 @@ try {
                                     <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
                                     <td class="details-cell">
                                         <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
-                                        <input type="number" step="1" class="form-control form-control-sm text-end input-value detail-input"
+                                        <input type="number" step="1"
+                                            class="form-control form-control-sm text-end input-value detail-input"
                                             data-parent="account-<?= $accountId ?>"
                                             data-account-id="<?= $accountId ?>"
                                             data-detail-id="<?= $detail['id'] ?>"
@@ -275,9 +333,10 @@ try {
                     </tbody>
                 </table>
             </div>
+            <!-- 処理モード用の hidden input -->
             <input type="hidden" name="action_type" id="forecastMode" value="update">
         </form>
-
+        <!-- 修正モーダル -->
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -295,11 +354,12 @@ try {
                 </div>
             </div>
         </div>
-        <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="cpFixModalLabel" aria-hidden="true">
+        <!-- 確定モーダル -->
+        <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="cpFixModalLabel">確定の確認</h5>
+                        <h5 class="modal-title" id="fixModalLabel">確定の確認</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
                     </div>
                     <div class="modal-body">
@@ -312,56 +372,76 @@ try {
                 </div>
             </div>
         </div>
-
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // アイコンの切り替え
-            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
-                icon.addEventListener('click', function() {
-                    const iconElement = icon.querySelector('i');
-                    if (iconElement.classList.contains('bi-dash-lg')) {
-                        iconElement.classList.remove('bi-dash-lg');
-                        iconElement.classList.add('bi-plus-lg');
-                    } else {
-                        iconElement.classList.remove('bi-plus-lg');
-                        iconElement.classList.add('bi-dash-lg');
+            // ----- URL パラメータのクリーンアップ処理 -----
+            // エラーまたは成功メッセージのパラメータが存在する場合、それをURLから削除して履歴を書き換える
+            const cleanUrl = function() {
+                if (window.history.replaceState) {
+                    const url = new URL(window.location.href);
+                    let shouldReplace = false;
+
+                    // success, error, year, month パラメータを全て削除
+                    if (url.searchParams.has('error')) {
+                        url.searchParams.delete('error');
+                        shouldReplace = true;
                     }
-                });
-            });
+                    if (url.searchParams.has('success')) {
+                        url.searchParams.delete('success');
+                        shouldReplace = true;
+                    }
 
-            document.getElementById('confirmSubmit').addEventListener('click', function() {
-                document.getElementById('forecastMode').value = 'update';
-                document.getElementById('mainForm').submit();
-            });
-        });
+                    // ★ 修正後の追加ロジック: yearとmonthが残っていた場合も削除
+                    if (url.searchParams.has('year')) {
+                        url.searchParams.delete('year');
+                        shouldReplace = true;
+                    }
+                    if (url.searchParams.has('month')) {
+                        url.searchParams.delete('month');
+                        shouldReplace = true;
+                    }
 
-        const yearMonthData = <?= json_encode($years) ?>;
-    </script>
-    <script>
-        // 修正モーダルの「はい」ボタンを押したとき
-        document.getElementById('confirmSubmit').addEventListener('click', function() {
-            document.getElementById('forecastMode').value = 'update';
-            document.getElementById('mainForm').submit();
-        });
+                    if (shouldReplace) {
+                        // URLをパスのみに書き換え
+                        window.history.replaceState({}, document.title, url.pathname);
 
-        // 確定モーダルの「はい」ボタンを押したとき
-        document.getElementById('forecastFixConfirmBtn').addEventListener('click', function() {
-            document.getElementById('forecastMode').value = 'fixed';
-            document.getElementById('mainForm').submit();
-        });
-    </script>
-    <script>
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            if (url.searchParams.has('error')) {
-                // クエリパラメータを削除して履歴を書き換え
-                url.searchParams.delete('error');
-                window.history.replaceState({}, document.title, url.pathname + url.search);
+                        // アドレスバーをクリーンにした後、ドロップダウンの表示も初期状態に戻す
+                        const yearSelect = document.getElementById('yearSelect');
+                        const monthSelect = document.getElementById('monthSelect');
+
+                        if (yearSelect) {
+                            yearSelect.value = ''; // 年度をリセット
+
+                            // 月のドロップダウンもリセットして無効化する
+                            if (monthSelect) {
+                                monthSelect.innerHTML = '<option value="" disabled selected>月を選択</option>';
+                                monthSelect.disabled = true;
+                            }
+                        }
+                    }
+                }
+            };
+
+            // ページロード時
+            // success/error パラメータを即座に削除し、URLをクリーンに保つ
+            cleanUrl();
+
+            // Bootstrap Alertが閉じられたとき（ユーザーが×ボタンを押したとき）
+            const successAlert = document.getElementById('successAlert');
+            const errorAlert = document.getElementById('errorAlert');
+
+            // DOMにAlertが存在すれば、閉じられたイベントをリッスン
+            if (successAlert) {
+                // Alertが閉じた後にURLをクリーンにする
+                successAlert.addEventListener('closed.bs.alert', cleanUrl);
             }
-        }
+            if (errorAlert) {
+                errorAlert.addEventListener('closed.bs.alert', cleanUrl);
+            }
+        });
     </script>
     <script src="../js/forecast_edit_body.js"></script>
 </body>

@@ -1,0 +1,75 @@
+.scroll-table {
+    max-height: 600px;
+    overflow-y: auto;
+    position: relative;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    border: 1px solid #dee2e6;
+    padding: 4px 6px;
+    text-align: center;
+}
+
+thead th {
+    position: sticky;
+    top: 0;
+    background-color: #e9f1ff;
+    z-index: 2;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+.text-start {
+    text-align: left;
+}
+
+.table-info {
+    background-color: #d1ecf1;
+}
+
+.table-success {
+    background-color: #d4edda;
+}
+
+.table-warning {
+    background-color: #fff3cd;
+    color: #212529;
+}
+
+.fw-bold {
+    font-weight: bold;
+}
+
+.small-text {
+    font-size: 0.85em;
+    color: #555;
+}
+
+/* chart.jsレスポンシブ対応 */
+.graph {
+    width: 100%;
+    height: 0;
+    padding-top: 50%;
+    position: relative;
+}
+
+.graph canvas#myChart {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* テキストボックス幅調整 */
+.text_w {
+    width: 95px;
+}

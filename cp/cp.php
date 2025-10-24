@@ -1,43 +1,43 @@
 <?php
 require_once '../includes/database.php';
 require_once '../includes/cp_ui_functions.php';
+
+// DB接続
 $dbh = getDb();
 
-// データ取得
-$query = "SELECT a.id AS account_id, a.name AS account_name, 
-                 d.id AS detail_id, d.name AS detail_name, 
-                 IFNULL(SUM(m.amount), 0) AS total_amount
-          FROM accounts a
-          LEFT JOIN details d ON a.id = d.account_id
-          LEFT JOIN monthly_cp_details m ON d.id = m.detail_id
-          GROUP BY a.id, d.id, a.name, d.name
-          ORDER BY a.id, d.id";
-$stmt = $dbh->prepare($query);
-$stmt->execute();
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 年度選択
+$availableYears = getAvailableCpYears($dbh);
 
-// データを構造化
+// 選択された年度・月（GET優先、なければ今年度＋4月）
+$selectedYear = (int)($_GET['year'] ?? date('Y'));
+$selectedMonth = (int)($_GET['month'] ?? 4);
+
+// ステータス表示用の基準年度
+$currentYear = $selectedYear;
+
+// 各月のステータス
+$cpStatusList = getCpStatusByYear($currentYear, $dbh);
+$statusColors = ['fixed' => 'success', 'draft' => 'primary', 'none' => 'secondary'];
+
+// 勘定科目と詳細
+$stmt = $dbh->query("SELECT * FROM accounts ORDER BY id ASC");
 $accounts = [];
-foreach ($rows as $row) {
-    $accountId = $row['account_id'];
-    if (!isset($accounts[$accountId])) {
-        $accounts[$accountId] = [
-            'name' => $row['account_name'],
-            'total' => 0,
-            'details' => []
-        ];
-    }
-    if (!is_null($row['detail_id'])) {
-        $accounts[$accountId]['details'][] = [
-            'id' => $row['detail_id'],
-            'name' => $row['detail_name'],
-            'amount' => floor($row['total_amount']) // 小数点以下は不要
-        ];
-        $accounts[$accountId]['total'] += floor($row['total_amount']);
-    }
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $accounts[$row['id']] = ['name' => $row['name'], 'details' => []];
 }
-?>
+$stmt = $dbh->query("SELECT d.*, a.id as account_id FROM details d JOIN accounts a ON d.account_id=a.id ORDER BY d.id ASC");
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $accounts[$row['account_id']]['details'][] = ['id' => $row['id'], 'name' => $row['name']];
+}
 
+// 営業所リスト
+$stmt = $dbh->query("SELECT * FROM offices ORDER BY id ASC");
+$offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$selectedMonth = 4;
+$selectedOffice = $offices[0]['id'] ?? 0;
+
+?>
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -95,11 +95,6 @@ foreach ($rows as $row) {
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -109,11 +104,6 @@ foreach ($rows as $row) {
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
-                            <li><a class="dropdown-item" href="#">Another action</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -153,127 +143,130 @@ foreach ($rows as $row) {
         </div>
     </nav>
     <div class="container mt-2">
-        <?php if (isset($_GET['success']) && $_GET['success'] === '1'): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                登録が完了しました。
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
-            </div>
-        <?php endif; ?>
         <?php if (isset($_GET['error'])): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert">
                 <?= htmlspecialchars($_GET['error']) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
-        <form action="process_cp.php" method="POST">
-            <h4 class="mb-2">CP 計画入力</h4>
-            <?php
-            $availableYears = getAvailableCpYears($dbh);
-            $currentYear = (int)($_GET['year'] ?? date('Y'));
-            $cpStatusList = getCpStatusByYear($currentYear, $dbh);
-            $statusColors = [
-                'fixed' => 'success',  // 緑
-                'draft' => 'primary',  // 青
-                'none' => 'secondary', // 灰色
-            ];
-            ?>
-
-            <div class="mb-3">
-                <label class="form-label mb-1">各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span></label><br>
-                <?php
-                $startMonth = 4; // 会計年度開始月
-                for ($i = 0; $i < 12; $i++):
-                    $month = ($startMonth + $i - 1) % 12 + 1;
-                    $status = $cpStatusList[$month];
-                    $colorClass = $statusColors[$status] ?? 'secondary';
-                ?>
-                    <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
-                        <?= $month ?>月
-                    </button>
-                <?php endfor; ?>
+        <?php if (isset($_GET['success']) && $_GET['success'] === '1'):
+            $sy = isset($_GET['year']) ? (int)$_GET['year'] : null;
+            $sm = isset($_GET['month']) ? (int)$_GET['month'] : null;
+        ?>
+            <div id="successAlert" class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php if ($sy && $sm): ?>
+                    <?= htmlspecialchars("{$sy}年度 {$sm}月 を登録しました。") ?>
+                <?php else: ?>
+                    登録が完了しました。
+                <?php endif; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
-            <!-- 上部の入力フォーム -->
-            <div class="info-box">
-                <div class="row">
-                    <!-- 年度の選択 -->
+        <?php endif; ?>
+        <form id="cpForm" action="process_cp.php" method="POST">
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <h4>CP 計画入力</h4>
+                </div>
+                <div class="col-md-10">
+                    <label>各月の状況：
+                        <span class="text-secondary">未登録</span>,
+                        <span class="text-primary">登録済</span>,
+                        <span class="text-success">確定済</span>
+                    </label><br>
+                    <?php
+                    $startMonth = 4;
+                    for ($i = 0; $i < 12; $i++):
+                        $month = ($startMonth + $i - 1) % 12 + 1;
+                        $status = $cpStatusList[$month];
+                        $colorClass = $statusColors[$status] ?? 'secondary';
+                    ?>
+                        <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled><?= $month ?>月</button>
+                    <?php endfor; ?>
+                </div>
+            </div>
+
+            <div class="info-box p-3 border mb-3">
+                <div class="row align-items-end mb-2">
                     <div class="col-md-2">
                         <label>年度</label>
                         <select id="yearSelect" name="year" class="form-select form-select-sm" onchange="onYearChange()">
                             <?php foreach ($availableYears as $year): ?>
-                                <option value="<?= $year ?>" <?= $year == $currentYear ? 'selected' : '' ?>>
-                                    <?= $year ?>年度
+                                <option value="<?= $year ?>" <?= $year == $currentYear ? 'selected' : '' ?>><?= $year ?>年度</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>月</label>
+                        <select id="monthSelect" name="month" class="form-select form-select-sm">
+                            <?php for ($i = 4; $i <= 12; $i++): ?>
+                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>><?= $i ?>月</option>
+                            <?php endfor; ?>
+                            <?php for ($i = 1; $i <= 3; $i++): ?>
+                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>><?= $i ?>月</option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>営業所</label>
+                        <select id="officeSelect" class="form-select form-select-sm" onchange="onOfficeChange()">
+                            <?php foreach ($offices as $office): ?>
+                                <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($office['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <!-- 月の選択 -->
-                    <?php
-                    $selectedMonth = 4;
-                    ?>
+                    <div class="col-md-3">
+                        <strong>総時間：</strong><span id="totalHours">0.00</span> 時間<br>
+                        <strong>労務費：</strong>¥<span id="laborCost">0</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>経費合計：</strong>¥<span id="expenseTotal">0</span><br>
+                        <strong>総合計：</strong>¥<span id="grandTotal">0</span>
+                    </div>
+                </div>
 
+                <div class="row align-items-end mb-2">
                     <div class="col-md-2">
-                        <label>月</label>
-                        <select id="monthSelect" name="month" class="form-select form-select-sm">
-                            <?php
-                            // 4月から12月を先に出力
-                            for ($i = 4; $i <= 12; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                    <?= $i ?>月
-                                </option>
-                            <?php endfor; ?>
-                            <?php
-                            // 1月から3月を後に出力
-                            for ($i = 1; $i <= 3; $i++): ?>
-                                <option value="<?= $i ?>" <?= $i == $selectedMonth ? 'selected' : '' ?>>
-                                    <?= $i ?>月
-                                </option>
-                            <?php endfor; ?>
-                        </select>
+                        <label>賃率</label>
+                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" value="<?= htmlspecialchars($_POST['hourly_rate'] ?? '') ?>">
                     </div>
                     <div class="col-md-2">
                         <label>定時間</label>
-                        <input type="number" step="0.01" id="standardHours" name="standard_hours" class="form-control form-control-sm" placeholder="0">
+                        <input type="number" step="0.01" class="form-control form-control-sm time-input" data-field="standard_hours">
                     </div>
                     <div class="col-md-2">
                         <label>残業時間</label>
-                        <input type="number" step="0.01" id="overtimeHours" name="overtime_hours" class="form-control form-control-sm" placeholder="0">
+                        <input type="number" step="0.01" class="form-control form-control-sm time-input" data-field="overtime_hours">
                     </div>
                     <div class="col-md-2">
                         <label>時間移動</label>
-                        <input type="number" step="0.01" id="transferredHours" name="transferred_hours" class="form-control form-control-sm" placeholder="0">
+                        <input type="number" step="0.01" class="form-control form-control-sm time-input" data-field="transferred_hours">
+                    </div>
+                    <div class="col-md-4"></div>
+                </div>
+
+                <div class="row align-items-end mb-2">
+                    <div class="col-md-2">
+                        <label>正社員</label>
+                        <input type="number" step="1" class="form-control form-control-sm time-input" data-field="fulltime_count">
                     </div>
                     <div class="col-md-2">
-                        <label>賃率</label>
-                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
+                        <label>契約社員</label>
+                        <input type="number" step="1" class="form-control form-control-sm time-input" data-field="contract_count">
                     </div>
-                    <div class="row mt-2 mb-5">
-                        <div class="col-md-2">
-                            <label>正社員</label>
-                            <input type="number" id="fulltimeCount" name="fulltime_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['fulltime_count'] ?? '') ?>">
-                        </div>
-                        <div class="col-md-2">
-                            <label>契約社員</label>
-                            <input type="number" id="contractCount" name="contract_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['contract_count'] ?? '') ?>">
-                        </div>
-                        <div class="col-md-2">
-                            <label>派遣社員</label>
-                            <input type="number" id="dispatchCount" name="dispatch_count" class="form-control form-control-sm" min="0" value="<?= htmlspecialchars($_POST['dispatch_count'] ?? '') ?>">
-                        </div>
-                        <div class="col-md-3">
-                            <strong>総時間：</strong> <span id="totalHours">0.00 時間</span><br>
-                            <strong>労務費：</strong> ¥<span id="laborCost">0</span>
-                        </div>
-                        <div class="col-md-3">
-                            <strong>経費合計：</strong> ¥<span id="expenseTotal">0</span><br>
-                            <strong>　総合計：</strong> ¥<span id="grandTotal">0</span>
-                        </div>
+                    <div class="col-md-2">
+                        <label>派遣社員</label>
+                        <input type="number" step="1" class="form-control form-control-sm time-input" data-field="dispatch_count">
                     </div>
+                    <div class="col-md-6"></div>
                 </div>
+                <input type="hidden" name="officeTimeData" id="officeTimeData">
                 <button type="submit" class="btn btn-outline-danger btn-sm register-button">登録</button>
             </div>
 
-            <!-- 勘定科目と詳細の入力フォーム -->
-            <div class="table-container">
+            <!-- 勘定科目と詳細 -->
+            <div class="table-container mb-3">
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
@@ -293,8 +286,7 @@ foreach ($rows as $row) {
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">
-                                    <?= $account['total'] ?>
-                                    <input type="hidden" name="total_account[<?= $accountId ?>]" value="<?= htmlspecialchars($account['total']) ?>">
+                                    <?= $account['total'] ?? 0 ?>
                                 </td>
                             </tr>
                             <!-- 詳細（子） -->
@@ -302,12 +294,10 @@ foreach ($rows as $row) {
                                 <tr class="collapse" id="child-<?= $accountId ?>">
                                     <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
                                     <td class="details-cell">
-                                        <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
-                                        <input type="number" step="1"
+                                        <input type="number" step="0.01"
                                             class="form-control form-control-sm text-end input-value detail-input"
-                                            data-parent="account-<?= $accountId ?>"
                                             data-account-id="<?= $accountId ?>"
-                                            name="amounts[]"
+                                            name="accounts[<?= $detail['id'] ?>]"
                                             placeholder="0">
                                     </td>
                                 </tr>
@@ -316,119 +306,125 @@ foreach ($rows as $row) {
                     </tbody>
                 </table>
             </div>
+
         </form>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // 営業所毎の時間管理データを保持
+        const officeTimeData = {};
+        const officeSelect = document.getElementById('officeSelect');
+        const hourlyRateInput = document.getElementById('hourlyRate');
+        const timeInputs = document.querySelectorAll('.time-input');
+
         function calculate() {
-            // 時間管理計算
-            const standardHours = parseFloat(document.getElementById('standardHours').value) || 0;
-            const overtimeHours = parseFloat(document.getElementById('overtimeHours').value) || 0;
-            const transferredHours = parseFloat(document.getElementById('transferredHours').value) || 0;
-            const hourlyRate = parseFloat(document.getElementById('hourlyRate').value) || 0;
-
-            const totalHours = standardHours + overtimeHours + transferredHours;
-            const laborCost = totalHours * hourlyRate;
-
+            let totalStandard = 0,
+                totalOvertime = 0,
+                totalTransferred = 0;
+            for (const officeId in officeTimeData) {
+                const data = officeTimeData[officeId];
+                totalStandard += parseFloat(data.standard_hours || 0);
+                totalOvertime += parseFloat(data.overtime_hours || 0);
+                totalTransferred += parseFloat(data.transferred_hours || 0);
+            }
+            const totalHours = totalStandard + totalOvertime + totalTransferred;
+            const laborCost = totalHours * (parseFloat(hourlyRateInput.value) || 0);
             document.getElementById('totalHours').innerText = totalHours.toFixed(2);
-            document.getElementById('laborCost').innerText = new Intl.NumberFormat().format(Math.round(laborCost));
+            document.getElementById('laborCost').innerText = Math.round(laborCost).toLocaleString();
 
-            // 経費合計計算
+            // 経費計算
             let expenseTotal = 0;
             document.querySelectorAll('.input-value').forEach(input => {
                 expenseTotal += parseFloat(input.value) || 0;
             });
-            document.getElementById('expenseTotal').innerText = new Intl.NumberFormat().format(Math.round(expenseTotal));
+            document.getElementById('expenseTotal').innerText = Math.round(expenseTotal).toLocaleString();
 
-            // 総合計計算
             const grandTotal = laborCost + expenseTotal;
-            document.getElementById('grandTotal').innerText = new Intl.NumberFormat().format(Math.round(grandTotal));
+            document.getElementById('grandTotal').innerText = Math.round(grandTotal).toLocaleString();
 
-            // 勘定科目ごとの合計計算
+            // 勘定科目ごとの合計
             const accountTotals = {};
             document.querySelectorAll('.input-value').forEach(input => {
                 const accountId = input.getAttribute('data-account-id');
                 accountTotals[accountId] = (accountTotals[accountId] || 0) + (parseFloat(input.value) || 0);
             });
-
             Object.keys(accountTotals).forEach(accountId => {
-                const accountTotalElement = document.getElementById(`total-account-${accountId}`);
-                if (accountTotalElement) {
-                    accountTotalElement.textContent = Math.round(accountTotals[accountId]);
-                }
+                const elem = document.getElementById(`total-account-${accountId}`);
+                if (elem) elem.textContent = Math.round(accountTotals[accountId]);
             });
         }
 
-        // 入力値変更時に計算
-        document.querySelectorAll('.info-box input, .input-value').forEach(input => {
-            input.addEventListener('input', calculate);
-        });
-
-        // 初期計算
-        calculate();
-    </script>
-    <script>
-        // 詳細の入力値が変更されたら合計を計算し親（勘定科目）に反映する
-        document.querySelectorAll('.input-value').forEach(input => {
+        // 入力値変更時
+        timeInputs.forEach(input => {
             input.addEventListener('input', () => {
-                const parentId = input.getAttribute('data-parent');
-                let total = 0;
-
-                // 同じ親の子要素を合計
-                document.querySelectorAll(`.input-value[data-parent='${parentId}']`).forEach(item => {
-                    const value = parseFloat(item.value) || 0;
-                    total += value;
-                });
-
-                // 親の合計値を更新
-                document.getElementById(`total-${parentId}`).textContent = total;
+                const officeId = officeSelect.value;
+                const field = input.dataset.field;
+                if (!officeTimeData[officeId]) officeTimeData[officeId] = {};
+                officeTimeData[officeId][field] = input.value;
+                calculate();
             });
         });
-    </script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // アイコンの切り替え
-            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
-                icon.addEventListener('click', function() {
-                    const iconElement = icon.querySelector('i');
-                    if (iconElement.classList.contains('bi-dash-lg')) {
-                        iconElement.classList.remove('bi-dash-lg');
-                        iconElement.classList.add('bi-plus-lg');
-                    } else {
-                        iconElement.classList.remove('bi-plus-lg');
-                        iconElement.classList.add('bi-dash-lg');
-                    }
-                });
+        hourlyRateInput.addEventListener('input', calculate);
+        document.querySelectorAll('.input-value').forEach(input => input.addEventListener('input', calculate));
+
+        // 営業所切替時
+        function onOfficeChange() {
+            const officeId = officeSelect.value;
+            const data = officeTimeData[officeId] || {};
+            timeInputs.forEach(input => {
+                const field = input.dataset.field;
+                input.value = data[field] || '';
             });
-        });
-    </script>
-    <script>
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            if (url.searchParams.has('success')) {
-                // クエリパラメータを削除して履歴を書き換え
-                url.searchParams.delete('success');
-                window.history.replaceState({}, document.title, url.pathname + url.search);
-            }
+            calculate();
         }
-    </script>
-    <script>
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            if (url.searchParams.has('error')) {
-                // クエリパラメータを削除して履歴を書き換え
-                url.searchParams.delete('error');
-                window.history.replaceState({}, document.title, url.pathname + url.search);
-            }
-        }
-    </script>
-    <script>
+
+        // 年度変更時
         function onYearChange() {
             const year = document.getElementById('yearSelect').value;
             const url = new URL(window.location.href);
             url.searchParams.set('year', year);
-            window.location.href = url.toString(); // リロードして反映
+            window.location.href = url.toString();
+        }
+
+        // フォーム送信時に officeTimeData を hidden input にセット
+        document.getElementById("cpForm").addEventListener("submit", function() {
+            document.getElementById("officeTimeData").value = JSON.stringify(officeTimeData);
+        });
+
+        // アイコンの切替
+        document.querySelectorAll('.toggle-icon').forEach(icon => {
+            icon.addEventListener('click', function() {
+                const iElem = this.querySelector('i');
+                iElem.classList.toggle('bi-plus');
+                iElem.classList.toggle('bi-dash');
+            });
+        });
+
+        // 初期化処理
+        onOfficeChange(); // 初期営業所の値を復元
+        calculate(); // 初期計算
+    </script>
+    <script>
+        // エラーアラート処理
+        const errorAlertElem = document.getElementById('errorAlert');
+        if (errorAlertElem) {
+            errorAlertElem.addEventListener('close.bs.alert', function() {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('error');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            });
+        }
+
+        // 成功アラート処理
+        const successAlertElem = document.getElementById('successAlert');
+        if (successAlertElem) {
+            successAlertElem.addEventListener('close.bs.alert', function() {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('success');
+                url.searchParams.delete('month');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            });
         }
     </script>
 
