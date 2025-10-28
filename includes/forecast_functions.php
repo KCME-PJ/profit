@@ -110,7 +110,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
         ");
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_forecast_details
-            SET amount = ?, updated_at = NOW()
+            SET amount = ?
             WHERE id = ?
         ");
         $stmtInsertDetail = $dbh->prepare("

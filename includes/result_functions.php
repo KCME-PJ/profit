@@ -106,7 +106,7 @@ function updateMonthlyResult(array $data, PDO $dbh)
         "); // monthly_result_details
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_result_details
-            SET amount = ?, updated_at = NOW()
+            SET amount = ?
             WHERE id = ?
         "); // monthly_result_details
         $stmtInsertDetail = $dbh->prepare("

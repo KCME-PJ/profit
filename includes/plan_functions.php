@@ -107,7 +107,7 @@ function updateMonthlyPlan(array $data, PDO $dbh)
         ");
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_plan_details
-            SET amount = ?, updated_at = NOW()
+            SET amount = ?
             WHERE id = ?
         ");
         $stmtInsertDetail = $dbh->prepare("

@@ -130,7 +130,7 @@ function updateMonthlyCp(array $post, PDO $dbh)
         ");
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_cp_details
-            SET amount = ?,
+            SET amount = ?
             WHERE id = ?
         ");
         $stmtInsertDetail = $dbh->prepare("
