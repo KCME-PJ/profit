@@ -124,4 +124,31 @@ document.addEventListener('DOMContentLoaded', function () {
             monthSelect.value = initialMonth;
         }
     }
+
+    // エクセル集計ボタンの処理
+    const exportButtons = document.querySelectorAll('[data-export-type]');
+
+    exportButtons.forEach(button => {
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+
+            const year = yearSelect.value;
+            const month = monthSelect.value;
+
+            if (!year || !month) {
+                alert('年度と月を選択してください。');
+                return;
+            }
+
+            const type = button.getAttribute('data-export-type');
+            let url = '';
+
+            if (type === 'summary') {
+                url = `outlook_export_excel.php?year=${year}&month=${month}`;
+            } else if (type === 'details') {
+                url = `outlook_export_excel_details.php?year=${year}&month=${month}`;
+            }
+            window.location.href = url;
+        });
+    });
 });
