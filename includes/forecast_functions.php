@@ -52,7 +52,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
         $hourly_rate = (float)($firstOfficeData['hourly_rate'] ?? $currentRate ?? 0);
 
         // 親テーブルの更新（statusは更新時そのまま維持、hourly_rateのみ更新）
-        $stmtParent = $dbh->prepare("UPDATE monthly_forecast SET hourly_rate = ? WHERE id = ?");
+        $stmtParent = $dbh->prepare("UPDATE monthly_forecast SET hourly_rate = ?, updated_at = NOW() WHERE id = ?");
         $stmtParent->execute([$hourly_rate, $monthly_forecast_id]);
 
         // ----------------------------
@@ -65,7 +65,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
         $stmtUpdateTime = $dbh->prepare("
             UPDATE monthly_forecast_time SET
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
-                fulltime_count = ?, contract_count = ?, dispatch_count = ?
+                fulltime_count = ?, contract_count = ?, dispatch_count = ?, updated_at = NOW()
             WHERE id = ?
         ");
         $stmtInsertTime = $dbh->prepare("
@@ -117,6 +117,11 @@ function updateMonthlyForecast(array $data, PDO $dbh)
             INSERT INTO monthly_forecast_details (forecast_id, detail_id, amount)
             VALUES (?, ?, ?)
         ");
+        // ★ 追加: DELETE文
+        $stmtDeleteDetail = $dbh->prepare("
+            DELETE FROM monthly_forecast_details
+            WHERE forecast_id = ? AND detail_id = ?
+        ");
 
         // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
@@ -124,15 +129,20 @@ function updateMonthlyForecast(array $data, PDO $dbh)
                 $amount = (float)($amount ?? 0);
                 $detail_id = (int)$detail_id;
 
-                if ($amount > 0) {
-                    $stmtCheckDetail->execute([$forecast_id, $detail_id]);
-                    $existingId = $stmtCheckDetail->fetchColumn();
+                $stmtCheckDetail->execute([$forecast_id, $detail_id]);
+                $existingId = $stmtCheckDetail->fetchColumn();
 
+                if ($amount > 0) {
                     if ($existingId) {
+                        // 更新
                         $stmtUpdateDetail->execute([$amount, $existingId]);
                     } else {
+                        // 新規挿入
                         $stmtInsertDetail->execute([$forecast_id, $detail_id, $amount]);
                     }
+                } elseif ($existingId) {
+                    // ★ 追加: 金額が 0 または空で、既存のレコードがある場合は削除
+                    $stmtDeleteDetail->execute([$forecast_id, $detail_id]);
                 }
             }
         }
@@ -144,7 +154,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
 /**
  * 見通し確定処理（ステータス変更＆次の工程(Plan)へデータ反映）
  *
- * @param array $data POSTデータ
+ * @param array $data POSTデータ（monthly_forecast_idを含む）
  * @param PDO $dbh DBハンドル
  * @throws Exception
  */
@@ -199,7 +209,7 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
     // ----------------------------------------------------
     // Plan テーブルへの書き込み処理開始
     // ----------------------------------------------------
-    $dbh->beginTransaction(); // Planへの反映処理はトランザクションで保護
+    // $dbh->beginTransaction(); // ★ 修正: この行を削除 (二重トランザクションエラーの解消)
 
     try {
         // 1. monthly_plan (親テーブル) への処理
@@ -247,9 +257,10 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
         ");
         $stmtCopyDetails->execute([$planId, $monthly_forecast_id]);
 
-        $dbh->commit();
+        // $dbh->commit(); // ★ 修正: この行を削除
+
     } catch (Exception $e) {
-        $dbh->rollBack();
+        // $dbh->rollBack(); // ★ 修正: この行を削除
         throw new Exception("予定(Plan)への反映中にエラーが発生しました: " . $e->getMessage());
     }
 }

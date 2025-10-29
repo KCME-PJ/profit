@@ -17,9 +17,7 @@ function updateMonthlyPlan(array $data, PDO $dbh)
     $officeTimeData = $data['officeTimeData'] ?? [];
     $amounts = $data['amounts'] ?? [];
 
-    // ----------------------------
     // 確定ステータスのチェック (Fixedデータは修正不可)
-    // ----------------------------
     $stmtStatusCheck = $dbh->prepare("SELECT status FROM monthly_plan WHERE id = ?");
     $stmtStatusCheck->execute([$plan_id]);
     $currentStatus = $stmtStatusCheck->fetchColumn();
@@ -27,15 +25,9 @@ function updateMonthlyPlan(array $data, PDO $dbh)
     if ($currentStatus === 'fixed') {
         throw new Exception("この予定はすでに確定済みで、修正できません。");
     }
-    // ----------------------------
 
     try {
-        // ----------------------------
         // 1. 親テーブル (monthly_plan) の更新
-        //    - 共通賃率の更新
-        // ----------------------------
-
-        // 現状の賃率を取得
         $stmtHourlyRate = $dbh->prepare("SELECT hourly_rate FROM monthly_plan WHERE id = ?");
         $stmtHourlyRate->execute([$plan_id]);
         $currentRate = $stmtHourlyRate->fetchColumn();
@@ -44,17 +36,13 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             throw new Exception("対象の予定データが見つかりません。");
         }
 
-        // 賃率はどの営業所も同じ値を使用するため、最初の営業所の値または既存の値を採用する
         $firstOfficeData = reset($officeTimeData);
         $hourly_rate = (float)($firstOfficeData['hourly_rate'] ?? $currentRate ?? 0);
 
-        // 親テーブルの更新（statusは更新時そのまま維持、hourly_rateのみ更新）
-        $stmtParent = $dbh->prepare("UPDATE monthly_plan SET hourly_rate = ? WHERE id = ?");
+        $stmtParent = $dbh->prepare("UPDATE monthly_plan SET hourly_rate = ?, updated_at = NOW() WHERE id = ?");
         $stmtParent->execute([$hourly_rate, $plan_id]);
 
-        // ----------------------------
         // 2. 営業所別時間データ (monthly_plan_time) の更新/追加
-        // ----------------------------
         $stmtCheckTime = $dbh->prepare("
             SELECT id FROM monthly_plan_time 
             WHERE monthly_plan_id = ? AND office_id = ?
@@ -64,7 +52,8 @@ function updateMonthlyPlan(array $data, PDO $dbh)
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
                 fulltime_count = ?, contract_count = ?, dispatch_count = ?
             WHERE id = ?
-        ");
+        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+
         $stmtInsertTime = $dbh->prepare("
             INSERT INTO monthly_plan_time
             (monthly_plan_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
@@ -86,10 +75,8 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             $existingId = $stmtCheckTime->fetchColumn();
 
             if ($existingId) {
-                // 更新
                 $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
             } else {
-                // 新規挿入
                 $stmtInsertTime->execute([$plan_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
             }
         }
@@ -97,10 +84,8 @@ function updateMonthlyPlan(array $data, PDO $dbh)
         // ----------------------------
         // 3. 勘定科目明細 (monthly_plan_details) の更新/追加
         // ----------------------------
-        // 明細テーブルの親IDは plan_id
         $detail_parent_id = $plan_id;
 
-        // 既存データをチェックし、更新または挿入を行う
         $stmtCheckDetail = $dbh->prepare("
             SELECT id FROM monthly_plan_details 
             WHERE plan_id = ? AND detail_id = ?
@@ -109,27 +94,35 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             UPDATE monthly_plan_details
             SET amount = ?
             WHERE id = ?
-        ");
+        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+
         $stmtInsertDetail = $dbh->prepare("
             INSERT INTO monthly_plan_details (plan_id, detail_id, amount)
             VALUES (?, ?, ?)
         ");
+        // ★ 追加: DELETE文
+        $stmtDeleteDetail = $dbh->prepare("
+            DELETE FROM monthly_plan_details
+            WHERE plan_id = ? AND detail_id = ?
+        ");
 
-        // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
                 $amount = (float)($amount ?? 0);
                 $detail_id = (int)$detail_id;
 
-                if ($amount > 0) {
-                    $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
-                    $existingId = $stmtCheckDetail->fetchColumn();
+                $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
+                $existingId = $stmtCheckDetail->fetchColumn();
 
+                if ($amount > 0) {
                     if ($existingId) {
                         $stmtUpdateDetail->execute([$amount, $existingId]);
                     } else {
                         $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amount]);
                     }
+                } elseif ($existingId) {
+                    // ★ 追加: 金額が 0 または空で、既存のレコードがある場合は削除
+                    $stmtDeleteDetail->execute([$detail_parent_id, $detail_id]);
                 }
             }
         }
@@ -137,14 +130,7 @@ function updateMonthlyPlan(array $data, PDO $dbh)
         throw new Exception("予定の更新中にエラーが発生しました: " . $e->getMessage());
     }
 }
-
-/**
- * 予定確定処理（ステータス変更＆次の工程(Outlook)へデータ反映）
- *
- * @param array $data POSTデータ（plan_idを含む）
- * @param PDO $dbh DBハンドル
- * @throws Exception
- */
+// ... (confirmMonthlyPlan, reflectToOutlook, getMonthlyPlanId, getMonthlyOutlookId は変更なし) ...
 function confirmMonthlyPlan(array $data, PDO $dbh)
 {
     $plan_id = $data['plan_id'] ?? null;
@@ -166,18 +152,8 @@ function confirmMonthlyPlan(array $data, PDO $dbh)
         throw new Exception("予定の確定中にエラーが発生しました: " . $e->getMessage());
     }
 }
-
-/**
- * 予定データから月末見込み(Outlook)テーブルへデータを反映する処理
- *
- * @param int $plan_id 予定ID
- * @param PDO $dbh DBハンドル
- * @throws Exception
- */
 function reflectToOutlook(int $plan_id, PDO $dbh)
 {
-    // Outlookに反映する前に、Outlookの該当年月のデータを削除し、上書きするロジックを実装する
-
     // 1. 参照元の年/月/賃率情報を取得
     $stmt = $dbh->prepare("SELECT year, month, hourly_rate FROM monthly_plan WHERE id = ?");
     $stmt->execute([$plan_id]);
@@ -191,14 +167,8 @@ function reflectToOutlook(int $plan_id, PDO $dbh)
     $month = $planInfo['month'];
     $hourly_rate = $planInfo['hourly_rate'];
 
-    // ----------------------------------------------------
-    // Outlook テーブルへの書き込み処理開始
-    // ----------------------------------------------------
-    // 呼び出し元 (plan_update.php) のトランザクションに依存する
-
     try {
         // 1. monthly_outlook (親テーブル) への処理
-        //    - year/month で既存のレコードIDを取得
         $outlookId = getMonthlyOutlookId($year, $month, $dbh);
 
         if ($outlookId) {
@@ -219,7 +189,6 @@ function reflectToOutlook(int $plan_id, PDO $dbh)
         }
 
         // 2. monthly_outlook_time (営業所別データ) への処理
-        //    - monthly_plan_time からデータをコピー
         $stmtCopyTime = $dbh->prepare("
             INSERT INTO monthly_outlook_time 
             (monthly_outlook_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
@@ -231,7 +200,6 @@ function reflectToOutlook(int $plan_id, PDO $dbh)
         $stmtCopyTime->execute([$outlookId, $plan_id]);
 
         // 3. monthly_outlook_details (経費明細) への処理
-        //    - monthly_plan_details からデータをコピー
         $stmtCopyDetails = $dbh->prepare("
             INSERT INTO monthly_outlook_details (outlook_id, detail_id, amount)
             SELECT ?, detail_id, amount
@@ -243,10 +211,6 @@ function reflectToOutlook(int $plan_id, PDO $dbh)
         throw new Exception("月末見込み(Outlook)への反映中にエラーが発生しました: " . $e->getMessage());
     }
 }
-
-/**
- * 指定年月の monthly_plan ID を取得するヘルパー関数
- */
 function getMonthlyPlanId(int $year, int $month, PDO $dbh): ?int
 {
     $stmt = $dbh->prepare("SELECT id FROM monthly_plan WHERE year = ? AND month = ? LIMIT 1");
@@ -254,10 +218,6 @@ function getMonthlyPlanId(int $year, int $month, PDO $dbh): ?int
     $id = $stmt->fetchColumn();
     return $id !== false ? (int)$id : null;
 }
-
-/**
- * 指定年月の monthly_outlook ID を取得するヘルパー関数
- */
 function getMonthlyOutlookId(int $year, int $month, PDO $dbh): ?int
 {
     $stmt = $dbh->prepare("SELECT id FROM monthly_outlook WHERE year = ? AND month = ? LIMIT 1");
