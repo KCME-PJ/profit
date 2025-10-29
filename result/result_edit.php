@@ -445,6 +445,21 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             if (errorAlert) {
                 errorAlert.addEventListener('closed.bs.alert', cleanUrl);
             }
+
+            // アイコンの切り替え
+            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+                icon.addEventListener('click', function() {
+                    const iconElement = icon.querySelector('i');
+                    // bi-plus または bi-plus-lg (小アイコン) のクラスをトグルする
+                    if (iconElement.classList.contains('bi-plus') || iconElement.classList.contains('bi-plus-lg')) {
+                        iconElement.classList.remove('bi-plus', 'bi-plus-lg');
+                        iconElement.classList.add('bi-dash');
+                    } else if (iconElement.classList.contains('bi-dash') || iconElement.classList.contains('bi-dash-lg')) {
+                        iconElement.classList.remove('bi-dash', 'bi-dash-lg');
+                        iconElement.classList.add('bi-plus');
+                    }
+                });
+            });
         });
     </script>
     <script src="../js/result_edit_body.js"></script>
