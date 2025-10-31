@@ -17,13 +17,22 @@ try {
     foreach ($registeredDates as $date) {
         $years[$date['year']][] = $date['month'];
     }
+
+    // 1月始まりではなく、4月始まり (会計年度順) にソートする
     foreach ($years as &$months) {
-        sort($months); // 昇順に並べ替え
+
+        // 4月始まり（4, 5, ..., 12, 1, 2, 3）でソート
+        usort($months, function ($a, $b) {
+            // 1, 2, 3月は 13, 14, 15 として扱い、4月以降はそのままの数値で比較
+            $a_sort = $a < 4 ? $a + 12 : $a;
+            $b_sort = $b < 4 ? $b + 12 : $b;
+            return $a_sort <=> $b_sort;
+        });
     }
     unset($months); // 参照解除
 
     // 勘定科目、詳細情報の取得
-    $accountsQuery = "SELECT a.id AS account_id, a.name AS account_name, d.id AS detail_id, d.name AS detail_name
+    $accountsQuery = "SELECT a.id AS account_id, a.name AS account_name, d.id AS detail_id, d.name AS detail_name, d.note AS detail_note
                       FROM accounts a
                       LEFT JOIN details d ON a.id = d.account_id
                       ORDER BY a.id ASC, d.id ASC";
@@ -43,7 +52,8 @@ try {
         if (!is_null($row['detail_id'])) {
             $accounts[$accountId]['details'][] = [
                 'id' => $row['detail_id'],
-                'name' => $row['detail_name']
+                'name' => $row['detail_name'],
+                'note' => $row['detail_note']
             ];
         }
     }
@@ -82,8 +92,8 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="collapse navbar-collapse">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">CP
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            CP
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
@@ -91,37 +101,36 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">見通し
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            見通し
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">予定
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            予定
                         </a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">月末見込み
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            月末見込み
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">概算
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            概算
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             勘定科目設定
                         </a>
                         <ul class="dropdown-menu">
@@ -131,10 +140,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -142,8 +147,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-person-fill"></i>&nbsp;
                             user name さん
                         </a>
@@ -176,6 +180,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
+
         <form id="mainForm" action="plan_update.php" method="POST">
             <div class="row mb-3">
                 <div class="col-md-2">
@@ -185,7 +190,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <label class="form-label mb-1">
                         各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
                     </label><br>
-
                     <div id="monthButtonsContainer">
                         <?php
                         $startMonth = 4;
@@ -206,14 +210,11 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <a href="#" id="excelExportBtn2" class="btn btn-outline-primary btn-sm" data-export-type="details">Excel出力（明細）</a>
                 </div>
             </div>
-
-            <!-- 上部の入力フォーム -->
             <div class="info-box">
                 <div class="row align-items-end mb-2">
                     <?php
                     $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
                     ?>
-                    <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
                         <select id="yearSelect" name="year" class="form-select form-select-sm">
@@ -270,7 +271,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </div>
                     <div class="col-md-4"></div>
                 </div>
-
                 <div class="row align-items-end mb-2">
                     <div class="col-md-2">
                         <label>正社員</label>
@@ -290,19 +290,25 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
                 <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
             </div>
-
-            <!-- 勘定科目と詳細の入力フォーム -->
             <div class="table-container">
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
-                            <th>勘定科目/詳細</th>
-                            <th style="width: 150px;">CP</th>
+                            <!-- 1列目: 勘定科目 (ボタンと名前) -->
+                            <th>勘定科目</th>
+                            <!-- 2列目: 詳細 (展開行用) -->
+                            <th style="width: 30%;">詳細</th>
+                            <!-- 3列目: 備考 (展開行用) -->
+                            <th style="width: 30%;">備考</th>
+                            <!-- 4列目: 金額 (予定) -->
+                            <th style="width: 150px;">金額（予定）</th>
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- 勘定科目（親） -->
                         <?php foreach ($accounts as $accountId => $account): ?>
                             <tr>
+                                <!-- 1列目: 勘定科目名 -->
                                 <td>
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                         data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
@@ -310,13 +316,30 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
+                                <!-- 2列目 (詳細): 親行は空 -->
+                                <td></td>
+                                <!-- 3列目 (備考): 親行は空 -->
+                                <td></td>
+                                <!-- 4列目: 合計金額 -->
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0
                                     <input type="hidden" name="total_account[<?= $accountId ?>]" value="0">
                                 </td>
                             </tr>
+
+                            <!-- 詳細（子） -->
                             <?php foreach ($account['details'] as $detail): ?>
                                 <tr class="collapse" id="child-<?= $accountId ?>">
-                                    <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
+                                    <!-- 1列目: (空) -->
+                                    <td></td>
+                                    <!-- 2列目: 詳細名 (インデント) -->
+                                    <td class="ps-4">
+                                        <?= htmlspecialchars($detail['name']) ?>
+                                    </td>
+                                    <!-- 3列目: 備考 -->
+                                    <td>
+                                        <?= htmlspecialchars($detail['note']) ?>
+                                    </td>
+                                    <!-- 4列目: 金額入力 -->
                                     <td class="details-cell">
                                         <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
                                         <input type="number" step="1"
@@ -333,10 +356,9 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </tbody>
                 </table>
             </div>
-            <!-- 処理モード用の hidden input -->
+
             <input type="hidden" name="action_type" id="planMode" value="update">
         </form>
-        <!-- 修正モーダル -->
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -354,7 +376,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
         </div>
-        <!-- 確定モーダル -->
         <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -367,7 +388,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                        <!-- IDを修正 -->
                         <button type="button" class="btn btn-success" id="planFixConfirmBtn">はい、確定する</button>
                     </div>
                 </div>
@@ -379,13 +399,11 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // ----- URL パラメータのクリーンアップ処理 -----
-            // エラーまたは成功メッセージのパラメータが存在する場合、それをURLから削除して履歴を書き換える
             const cleanUrl = function() {
                 if (window.history.replaceState) {
                     const url = new URL(window.location.href);
                     let shouldReplace = false;
 
-                    // success, error, year, month パラメータを全て削除
                     if (url.searchParams.has('error')) {
                         url.searchParams.delete('error');
                         shouldReplace = true;
@@ -394,8 +412,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         url.searchParams.delete('success');
                         shouldReplace = true;
                     }
-
-                    // ★ 修正後の追加ロジック: yearとmonthが残っていた場合も削除
                     if (url.searchParams.has('year')) {
                         url.searchParams.delete('year');
                         shouldReplace = true;
@@ -406,40 +422,27 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     }
 
                     if (shouldReplace) {
-                        // URLをパスのみに書き換え
                         window.history.replaceState({}, document.title, url.pathname);
 
-                        // アドレスバーをクリーンにした後、ドロップダウンの表示も初期状態に戻す
                         const yearSelect = document.getElementById('yearSelect');
                         const monthSelect = document.getElementById('monthSelect');
 
                         if (yearSelect) {
                             yearSelect.value = ''; // 年度をリセット
-
-                            // 月のドロップダウンもリセットして無効化する
                             if (monthSelect) {
                                 monthSelect.innerHTML = '<option value="" disabled selected>月を選択</option>';
                                 monthSelect.disabled = true;
                             }
-
-                            // 画面の合計値などもリセットする必要があるが、それは body.js の役割。
-                            // body.js の初期化ロジックに任せるため、ここでは DOM の値を操作しない。
                         }
                     }
                 }
             };
-
-            // ページロード時
-            // success/error パラメータを即座に削除し、URLをクリーンに保つ
             cleanUrl();
 
-            // Bootstrap Alertが閉じられたとき（ユーザーが×ボタンを押したとき）
             const successAlert = document.getElementById('successAlert');
             const errorAlert = document.getElementById('errorAlert');
 
-            // DOMにAlertが存在すれば、閉じられたイベントをリッスン
             if (successAlert) {
-                // Alertが閉じた後にURLをクリーンにする
                 successAlert.addEventListener('closed.bs.alert', cleanUrl);
             }
             if (errorAlert) {
@@ -450,7 +453,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             document.querySelectorAll('.toggle-icon').forEach(function(icon) {
                 icon.addEventListener('click', function() {
                     const iconElement = icon.querySelector('i');
-                    // bi-plus または bi-plus-lg (小アイコン) のクラスをトグルする
                     if (iconElement.classList.contains('bi-plus') || iconElement.classList.contains('bi-plus-lg')) {
                         iconElement.classList.remove('bi-plus', 'bi-plus-lg');
                         iconElement.classList.add('bi-dash');

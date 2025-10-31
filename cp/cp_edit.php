@@ -1,5 +1,6 @@
 <?php
 require_once '../includes/database.php';
+require_once '../includes/cp_ui_functions.php';
 
 // データベース接続
 $dbh = getDb();
@@ -16,8 +17,13 @@ try {
     foreach ($registeredDates as $date) {
         $years[$date['year']][] = $date['month'];
     }
+    // 4月始まりソート
     foreach ($years as &$months) {
-        sort($months); // 昇順に並べ替え
+        usort($months, function ($a, $b) {
+            $a_sort = $a < 4 ? $a + 12 : $a;
+            $b_sort = $b < 4 ? $b + 12 : $b;
+            return $a_sort <=> $b_sort;
+        });
     }
     unset($months); // 参照解除
 
@@ -27,7 +33,8 @@ try {
         a.id AS account_id,
         a.name AS account_name,
         d.id AS detail_id,
-        d.name AS detail_name
+        d.name AS detail_name,
+        d.note AS detail_note 
         FROM accounts a
         LEFT JOIN details d ON a.id = d.account_id
         ORDER BY a.id ASC, d.id ASC";
@@ -53,6 +60,7 @@ try {
             $accounts[$accountId]['details'][] = [
                 'id' => $row['detail_id'],
                 'name' => $row['detail_name'],
+                'note' => $row['detail_note']
             ];
         }
     }
@@ -114,8 +122,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             CP
                         </a>
                         <ul class="dropdown-menu">
@@ -123,8 +130,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             見通し
                         </a>
                         <ul class="dropdown-menu">
@@ -132,8 +138,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             予定
                         </a>
                         <ul class="dropdown-menu">
@@ -141,8 +146,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             月末見込み
                         </a>
                         <ul class="dropdown-menu">
@@ -150,8 +154,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             概算
                         </a>
                         <ul class="dropdown-menu">
@@ -159,8 +162,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             勘定科目設定
                         </a>
                         <ul class="dropdown-menu">
@@ -170,10 +172,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -181,8 +179,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-person-fill"></i>&nbsp;
                             user name さん
                         </a>
@@ -194,6 +191,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             </div>
         </div>
     </nav>
+
     <div class="container mt-2">
         <?php if (isset($_GET['error'])): ?>
             <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -214,6 +212,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
+
         <form id="mainForm" action="./cp_update.php" method="POST">
             <div class="row mb-3">
                 <div class="col-md-2">
@@ -223,7 +222,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <label class="form-label mb-1">
                         各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
                     </label><br>
-
                     <div id="monthButtonsContainer">
                         <?php
                         $startMonth = 4;
@@ -245,13 +243,11 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
 
-            <!-- 上部の入力フォーム -->
             <div class="info-box">
                 <div class="row align-items-end mb-2">
                     <?php
                     $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
                     ?>
-                    <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
                         <select id="yearSelect" name="year" class="form-select form-select-sm">
@@ -328,20 +324,24 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
                 <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#cpFixModal">確定</button>
             </div>
-
-            <!-- 勘定科目と詳細の入力フォーム -->
             <div class="table-container">
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
-                            <th>勘定科目/詳細</th>
-                            <th style="width: 150px;">CP</th>
+                            <!-- 1列目: 勘定科目 -->
+                            <th>勘定科目</th>
+                            <!-- 2列目: 詳細/備考 (展開行用) -->
+                            <th style="width: 30%;">詳細</th>
+                            <th style="width: 30%;">備考</th>
+                            <!-- 3列目: 金額 (CP) -->
+                            <th style="width: 150px;">金額（CP）</th>
                         </tr>
                     </thead>
                     <tbody>
                         <!-- 勘定科目（親） -->
                         <?php foreach ($accounts as $accountId => $account): ?>
                             <tr>
+                                <!-- 1列目: 勘定科目名 -->
                                 <td>
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                         data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
@@ -349,14 +349,30 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
+                                <!-- 2列目 (詳細): 親行は空 -->
+                                <td></td>
+                                <!-- 3列目 (備考): 親行は空 -->
+                                <td></td>
+                                <!-- 4列目: 合計金額 -->
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0
                                     <input type="hidden" name="total_account[<?= $accountId ?>]" value="0">
                                 </td>
                             </tr>
+
                             <!-- 詳細（子） -->
                             <?php foreach ($account['details'] as $detail): ?>
                                 <tr class="collapse" id="child-<?= $accountId ?>">
-                                    <td class="ps-4"><?= htmlspecialchars($detail['name']) ?></td>
+                                    <!-- 1列目: (空) -->
+                                    <td></td>
+                                    <!-- 2列目: 詳細名 (インデント) -->
+                                    <td class="ps-4">
+                                        <?= htmlspecialchars($detail['name']) ?>
+                                    </td>
+                                    <!-- 3列目: 備考 -->
+                                    <td>
+                                        <?= htmlspecialchars($detail['note']) ?>
+                                    </td>
+                                    <!-- 4列目: 金額入力 -->
                                     <td class="details-cell">
                                         <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
                                         <input type="number" step="1"
@@ -373,10 +389,8 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </tbody>
                 </table>
             </div>
-            <!-- 処理モード用の hidden input -->
             <input type="hidden" name="action_type" id="cpMode" value="update">
         </form>
-        <!-- CP修正モーダル -->
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -394,7 +408,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
         </div>
-        <!-- CP確定モーダル -->
         <div class="modal fade" id="cpFixModal" tabindex="-1" aria-labelledby="cpFixModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -430,17 +443,16 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     }
                 });
             });
-        });
-    </script>
-    <script>
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            if (url.searchParams.has('error')) {
-                // クエリパラメータを削除して履歴を書き換え
-                url.searchParams.delete('error');
-                window.history.replaceState({}, document.title, url.pathname + url.search);
+
+            // URLクリーンアップ
+            if (window.history.replaceState) {
+                const url = new URL(window.location.href);
+                if (url.searchParams.has('error')) {
+                    url.searchParams.delete('error');
+                    window.history.replaceState({}, document.title, url.pathname + url.search);
+                }
             }
-        }
+        });
     </script>
     <script src="../js/cp_edit_body.js"></script>
 </body>
