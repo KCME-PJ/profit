@@ -25,7 +25,6 @@ function redirectWithError($msg, $year, $month)
 $dbh = getDb();
 
 // Forecastデータの存在と確定ステータスチェック
-// 共通賃率(hourly_rate)もここで取得する
 $queryStatus = "SELECT id, status, hourly_rate FROM monthly_forecast WHERE year = :year AND month = :month";
 $stmt = $dbh->prepare($queryStatus);
 $stmt->execute([':year' => $year, ':month' => $month]);
@@ -33,14 +32,14 @@ $forecastData = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$forecastData) {
     redirectWithError("【{$year}年度 {$month}月】の見通しは未登録です。", $year, $month);
-} elseif ($forecastData['status'] !== 'fixed') {
-    redirectWithError("【{$year}年度 {$month}月】の見通しは未確定です。確定後に出力してください。", $year, $month);
 }
+// (draftでも出力許可)
+/* elseif ($forecastData['status'] !== 'fixed') { ... } */
+
 $monthlyForecastId = $forecastData['id'];
-// 親テーブルから共通賃率を取得
 $commonHourlyRate = (float)($forecastData['hourly_rate'] ?? 0);
 
-// 営業所の一覧を取得 (officesテーブルを使用)
+// 営業所の一覧を取得
 $queryOffices = "SELECT id, name FROM offices ORDER BY id";
 $stmt = $dbh->prepare($queryOffices);
 $stmt->execute();
@@ -51,14 +50,13 @@ if (!$offices) {
 
 // ===== Excel 出力 =====
 $spreadsheet = new Spreadsheet();
-$spreadsheet->removeSheetByIndex(0); // デフォルトシート削除
+$spreadsheet->removeSheetByIndex(0);
 
 // 営業所ごとにシートを作成
 foreach ($offices as $office) {
     $officeId = $office['id'];
     $officeName = $office['name'];
 
-    // 新しいシートを作成
     $sheet = $spreadsheet->createSheet();
     $sheet->setTitle($officeName);
 
@@ -68,7 +66,13 @@ foreach ($offices as $office) {
     $sheet->setCellValue("A2", "営業所名");
     $sheet->setCellValue("B2", $officeName);
 
-    // 営業所ごとの時間・人数データを取得 (Forecastデータのみ)
+    // statusが 'draft' の場合は警告メッセージを表示
+    if ($forecastData['status'] === 'draft') {
+        $sheet->setCellValue("D1", "【注意】このデータは未確定 (Draft) です");
+        $sheet->getStyle('D1')->getFont()->getColor()->setARGB('FFFF0000'); // 赤色
+    }
+
+    // 営業所ごとの時間・人数データを取得
     $queryTime = "
         SELECT 
             standard_hours, overtime_hours, transferred_hours, 
@@ -87,16 +91,13 @@ foreach ($offices as $office) {
         'contract_count' => 0,
         'dispatch_count' => 0
     ];
-    // 共通賃率を $timeData 配列にマージ
     $timeData['hourly_rate'] = $commonHourlyRate;
 
-    // 営業所ごとの詳細項目ごとの金額取得 (金額 > 0 のみ)
+    // 営業所ごとの詳細項目ごとの金額取得 (金額 != 0 のみ)
     $queryDetails = "
         SELECT 
-            a.id AS account_id,
-            a.name AS account_name,
-            det.id AS detail_id,
-            det.name AS detail_name,
+            a.id AS account_id, a.name AS account_name,
+            det.id AS detail_id, det.name AS detail_name,
             d.amount
         FROM monthly_forecast_details d
         JOIN details det ON d.detail_id = det.id
@@ -104,7 +105,7 @@ foreach ($offices as $office) {
         WHERE 
             d.forecast_id = :monthly_forecast_id 
             AND det.office_id = :office_id 
-            AND d.amount > 0 
+            AND d.amount != 0 
         ORDER BY a.id ASC, det.id ASC
     ";
     $stmtDetails = $dbh->prepare($queryDetails);

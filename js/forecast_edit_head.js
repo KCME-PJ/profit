@@ -4,8 +4,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const monthButtonsContainer = document.getElementById('monthButtonsContainer');
 
     // PHPから渡された登録済みデータ
-    // yearMonthData は forecast_edit.php で window.yearMonthData として設定されている
     const yearMonthData = window.yearMonthData;
+
+    // 現在の年度のステータス一覧を保持する変数を定義
+    let currentYearStatuses = {};
 
     /**
      * 年度選択に応じて月セレクトボックスを更新する
@@ -39,7 +41,6 @@ document.addEventListener('DOMContentLoaded', function () {
             button.classList.remove('btn-primary', 'btn-success');
             button.classList.add('btn-secondary');
             button.disabled = true;
-            // 既存のイベントリスナーを削除 (二重登録防止)
             button.replaceWith(button.cloneNode(true));
         });
 
@@ -52,6 +53,10 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch(`get_forecast_status.php?year=${year}`)
             .then(response => response.json())
             .then(statuses => {
+
+                // 取得したステータスをグローバル変数に保存
+                currentYearStatuses = statuses;
+
                 // PHP側で返される statuses: {1: 'draft', 2: 'fixed', ...}
                 monthButtons.forEach(button => {
                     const month = parseInt(button.textContent.replace('月', ''), 10);
@@ -71,13 +76,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     // 月ボタンクリック時のイベント再設定
                     button.addEventListener('click', function () {
-                        // 月ドロップダウンの値を更新し、changeイベントを発火させる
                         monthSelect.value = month;
                         monthSelect.dispatchEvent(new Event('change'));
                     });
                 });
             })
-            .catch(error => console.error('ステータス取得エラー:', error));
+            .catch(error => {
+                console.error('ステータス取得エラー:', error);
+                currentYearStatuses = {}; // エラー時はリセット
+            });
     }
 
     // ---------------------------------------------
@@ -105,25 +112,23 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- 初期ロード処理 ---
     // ---------------------------------------------
 
-    // URLパラメータから year, month を取得
     const urlParams = new URLSearchParams(window.location.search);
     const initialYear = urlParams.get('year');
     const initialMonth = urlParams.get('month');
 
     if (initialYear) {
-        // 1. 年度ドロップダウンの値をセット
         yearSelect.value = initialYear;
-        // 2. 月ドロップダウンのオプションとボタンのステータスを更新
         updateMonths();
         updateForecastStatusButtons(initialYear);
 
         if (initialMonth) {
-            // 3. 月ドロップダウンの値をセット (データロードは body.js の役割)
             monthSelect.value = initialMonth;
         }
     }
 
-    // エクセル集計ボタンの処理
+    // ------------------------------
+    // --- エクセル集計ボタンの処理 ---
+    // ------------------------------
     const exportButtons = document.querySelectorAll('[data-export-type]');
 
     exportButtons.forEach(button => {
@@ -134,19 +139,41 @@ document.addEventListener('DOMContentLoaded', function () {
             const month = monthSelect.value;
 
             if (!year || !month) {
-                alert('年度と月を選択してください。');
+                console.error('年度と月を選択してください。');
                 return;
             }
 
+            // 現在選択中の月のステータスを取得
+            const status = currentYearStatuses[month] || 'none';
+
+            // 1. 未登録データは出力させない
+            if (status === 'none') {
+                console.error('この月のデータは未登録のため出力できません。');
+                // alert('この月のデータは未登録のため出力できません。');
+                return;
+            }
+
+            // 2. URLを定義
             const type = button.getAttribute('data-export-type');
             let url = '';
-
             if (type === 'summary') {
                 url = `forecast_export_excel.php?year=${year}&month=${month}`;
             } else if (type === 'details') {
                 url = `forecast_export_excel_details.php?year=${year}&month=${month}`;
             }
-            window.location.href = url;
+
+            // 3. ステータスに応じて警告または実行
+            if (status === 'draft' || status === 'registered') {
+                // Draftの場合、警告を表示 (confirmが使える前提)
+                if (confirm('このデータは未確定 (Draft) です。\n未確定のデータを出力しますか？')) {
+                    // ユーザーが「OK」を押した場合のみ実行
+                    window.location.href = url;
+                }
+                // (ユーザーが「キャンセル」を押した場合は何もしない)
+            } else if (status === 'fixed') {
+                // Fixedの場合は警告なしで実行
+                window.location.href = url;
+            }
         });
     });
 });

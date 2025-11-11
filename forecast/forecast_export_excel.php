@@ -4,6 +4,7 @@ require_once '../includes/database.php';
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
 // 入力チェック
 $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
@@ -31,11 +32,15 @@ $stmt = $dbh->prepare($queryStatus);
 $stmt->execute([':year' => $year, ':month' => $month]);
 $forecastData = $stmt->fetch(PDO::FETCH_ASSOC);
 
+// データが存在しない場合のみエラーとし、'draft' でも 'fixed' でも許可する
 if (!$forecastData) {
     redirectWithError("【{$year}年度 {$month}月】の見通しは未登録です。", $year, $month);
-} elseif ($forecastData['status'] !== 'fixed') {
+}
+/* // 'fixed' でなくてもエラーにしない (draftでも出力許可)
+elseif ($forecastData['status'] !== 'fixed') {
     redirectWithError("【{$year}年度 {$month}月】の見通しは未確定です。確定後に出力してください。", $year, $month);
 }
+*/
 $monthlyForecastId = $forecastData['id'];
 // 親テーブルから共通賃率を取得
 $commonHourlyRate = (float)($forecastData['hourly_rate'] ?? 0);
@@ -81,7 +86,7 @@ foreach ($accountRows as $row) {
 $spreadsheet = new Spreadsheet();
 $spreadsheet->removeSheetByIndex(0); // デフォルトシート削除
 
-// 勘定科目ID => Excel行番号のマッピング
+// ★ 勘定科目ID => Excel行番号のマッピング
 $accountRowMap = [
     1 => 4,
     2 => 5,
@@ -144,6 +149,12 @@ foreach ($offices as $office) {
     $sheet->setCellValue("B1", "{$month}月");
     $sheet->setCellValue("A2", "営業所名");
     $sheet->setCellValue("B2", $officeName);
+
+    // statusが 'draft' の場合は警告メッセージを表示
+    if ($forecastData['status'] === 'draft') {
+        $sheet->setCellValue("D1", "【注意】このデータは未確定 (Draft) です");
+        $sheet->getStyle('D1')->getFont()->getColor()->setARGB('FFFF0000'); // 赤色
+    }
 
     // 勘定科目ごとの集計データ書き込み & 経費合計計算 (マッピング基準に変更)
     $expenseTotal = 0;
