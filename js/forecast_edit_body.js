@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentOfficeId = officeSelect ? officeSelect.value : null;
 
     // 1. 初期ロード（PHPから渡された全営業所のJSONをパース）
-    // PHP側で初期データを渡していないため、初期値は空
     try {
         const initialJson = hiddenTime ? hiddenTime.value : "{}";
         officeTimeDataLocal = JSON.parse(initialJson || "{}");
@@ -33,26 +32,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 2. 現在の DOM の値をローカル変数に保存（入力や営業所切り替え時に実行）
     function captureCurrentOfficeTime(oid) {
-        if (!oid || !officeTimeDataLocal) return;
+        if (!oid) return;
 
-        // 賃率がDOMにあるため、DOMから読み取る
         const currentRate = hourlyRateInput ? parseFloat(hourlyRateInput.value) || 0 : 0;
-
         const data = officeTimeDataLocal[oid] || {};
 
-        // 時間・人数のキャプチャ
         for (const key in timeFields) {
             const input = timeFields[key];
             if (input) {
-                // 文字列が空の場合は空文字を保存し、数値へのパースはサーバーに任せる
                 data[key] = input.value === '' ? '' : (key.includes('hours') ? parseFloat(input.value) || 0 : parseInt(input.value) || 0);
             }
         }
 
-        // 賃率のキャプチャ（全国共通値として全営業所のデータに反映）
         for (const id in officeTimeDataLocal) {
             if (!officeTimeDataLocal[id]) officeTimeDataLocal[id] = {};
-            // hourly_rate は monthly_forecast の親テーブルで管理されるため、ここで全営業所の子データにも格納しておく
             officeTimeDataLocal[id].hourly_rate = currentRate;
         }
 
@@ -62,25 +55,20 @@ document.addEventListener('DOMContentLoaded', function () {
     // 3. ローカル変数の値を DOM に復元して表示（営業所切り替え時や初期表示時に実行）
     function renderOfficeToDom(oid) {
         if (!oid || !officeSelect) return;
-
         const data = officeTimeDataLocal[oid] || {};
-
-        // 賃率の表示 (全国共通のため、どの営業所の値も同じ。DOMに反映)
         const rateVal = data.hourly_rate;
+
         if (hourlyRateInput) {
             hourlyRateInput.value = (rateVal !== undefined && rateVal !== null && rateVal !== '') ? rateVal : '';
         }
 
-        // 時間・人数の表示
         for (const key in timeFields) {
             const val = data[key];
             if (timeFields[key]) {
-                // DOMの値を更新
                 timeFields[key].value = (val !== undefined && val !== null && val !== '') ? val : '';
             }
         }
 
-        // 合計計算を実行
         updateTotals();
     }
 
@@ -90,29 +78,48 @@ document.addEventListener('DOMContentLoaded', function () {
             console.error('年度と月が選択されていません。');
             return;
         }
-
-        // 最後に編集していた営業所のデータを必ずローカルに保存
         captureCurrentOfficeTime(currentOfficeId);
-
-        // 全営業所のデータを hidden input にJSON文字列として格納
         if (hiddenTime) {
             hiddenTime.value = JSON.stringify(officeTimeDataLocal);
         }
-
-        // フォームが持つ親テーブルの時間・人数入力フィールドをクリア（DB構造の矛盾対策）
-        // monthly_forecast_timeにデータを入れるため、親のmonthly_forecastの項目は空にする
         if (form) {
-            // 賃率以外の親テーブル項目をクリア
             form.querySelectorAll('[name="standard_hours"], [name="overtime_hours"], [name="transferred_hours"], [name="fulltime_count"], [name="contract_count"], [name="dispatch_count"]').forEach(input => {
                 input.value = 0;
             });
-            // 賃率のみは共通値としてmonthly_forecastに保存されるため、そのまま残す
         }
-
-        // アクションを設定して送信
         document.getElementById('forecastMode').value = action;
         form.submit();
     }
+
+    // フォームリセット関数を定義
+    /**
+     * 時間・人数・賃率・勘定科目明細の入力欄をすべてクリア（リセット）する
+     */
+    function resetInputFields() {
+        // 時間・人数・賃率をクリア
+        if (hourlyRateInput) hourlyRateInput.value = '';
+        for (const key in timeFields) {
+            if (timeFields[key]) {
+                timeFields[key].value = '';
+            }
+        }
+
+        // 勘定科目明細 (金額) をクリア
+        document.querySelectorAll('.detail-input').forEach(input => {
+            input.value = '';
+        });
+
+        // ローカルデータもリセット
+        officeTimeDataLocal = {};
+
+        // IDをリセット
+        const idInput = document.getElementById('monthlyForecastId');
+        if (idInput) idInput.value = '';
+
+        // 合計値をリセット
+        updateTotals();
+    }
+
 
     // ---------------------------------------------
     // --- イベントハンドラ（モーダル内のボタンに適用） ---
@@ -149,6 +156,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!year || !month) return;
 
+        // データロードの直前に、まずフォームをリセットする
+        resetInputFields();
+        // 営業所セレクタの現在値を再取得（リセット後に必要）
+        currentOfficeId = officeSelect ? officeSelect.value : null;
+
         // データロード開始
         fetch(`forecast_edit_load.php?year=${year}&month=${month}`)
             .then(response => {
@@ -163,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // 賃率を全営業所データに統一（共通賃率の原則）
                 const commonRate = data.common_hourly_rate ?? 0;
-                document.getElementById('hourlyRate').value = commonRate;
+                // document.getElementById('hourlyRate').value = commonRate; // renderOfficeToDom で行われる
 
                 // 賃率をローカルデータにも反映させる
                 for (const oid in officeTimeDataLocal) {
@@ -177,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 3. 現在選択されている営業所のデータをDOMに表示
                 renderOfficeToDom(currentOfficeId);
 
-                // 4. 各明細の金額
+                // 4. 各明細の金額 (リセット済みのため、新規セットのみ)
                 if (data.details) {
                     for (const [detailId, amount] of Object.entries(data.details)) {
                         const input = document.querySelector(`input[data-detail-id="${detailId}"]`);
@@ -189,11 +201,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 合計など再計算
                 updateTotals();
 
-                // ★ URLクリーンアップの実行
+                // URLクリーンアップの実行
                 cleanUrlParams();
             })
             .catch(error => {
                 console.error('データ読み込みエラー:', error);
+                resetInputFields(); // エラー時もリセット
             });
     });
 
@@ -322,9 +335,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (urlParams.get('year') && initialMonth) {
         yearSelect.value = urlParams.get('year');
         monthSelect.value = initialMonth;
-
-        // head.jsの処理が完了していることを前提に、手動で change イベントを発火させてデータロードをトリガー
-        // これにより、リダイレクト後の自動ロードと、通常の月選択時の動作を統一する
         monthSelect.dispatchEvent(new Event('change'));
     } else {
         // 月が未選択の場合は、初期表示を行う

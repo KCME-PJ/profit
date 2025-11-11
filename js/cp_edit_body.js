@@ -41,6 +41,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // 賃率のキャプチャ（全国共通値がDOMにあるため、ここで保存）
         data.hourly_rate = hourlyRateInput.value === '' ? '' : parseFloat(hourlyRateInput.value) || 0;
 
+        // ★ 修正: CPでは賃率は営業所ごとに持つが、JSロジック上は共通賃率として全営業所に反映
+        const currentRate = data.hourly_rate;
+        for (const id in officeTimeDataLocal) {
+            if (!officeTimeDataLocal[id]) officeTimeDataLocal[id] = {};
+            officeTimeDataLocal[id].hourly_rate = currentRate;
+        }
+
         officeTimeDataLocal[oid] = data;
     }
 
@@ -68,28 +75,50 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('年度と月を選択してください。');
             return;
         }
-
-        // 最後に編集していた営業所のデータを必ずローカルに保存
         captureCurrentOfficeTime(currentOfficeId);
-
-        // 全営業所のデータを hidden input にJSON文字列として格納
         hiddenTime.value = JSON.stringify(officeTimeDataLocal);
-
-        // アクションを設定して送信
         document.getElementById('cpMode').value = action;
         form.submit();
     }
+
+    // フォームリセット関数を定義
+    /**
+     * 時間・人数・賃率・勘定科目明細の入力欄をすべてクリア（リセット）する
+     */
+    function resetInputFields() {
+        // 時間・人数・賃率をクリア
+        if (hourlyRateInput) hourlyRateInput.value = '';
+        for (const key in timeFields) {
+            if (timeFields[key]) {
+                timeFields[key].value = '';
+            }
+        }
+
+        // 勘定科目明細 (金額) をクリア
+        document.querySelectorAll('.detail-input').forEach(input => {
+            input.value = '';
+        });
+
+        // ローカルデータもリセット
+        officeTimeDataLocal = {};
+
+        // IDをリセット
+        const idInput = document.getElementById('monthlyCpId');
+        if (idInput) idInput.value = '';
+
+        // 合計値をリセット
+        updateTotals();
+    }
+
 
     // ---------------------------------------------
     // --- イベントハンドラ（モーダル内のボタンに適用） ---
     // ---------------------------------------------
 
-    // 修正ボタン（モーダル内の「はい、修正する」）
     document.getElementById('confirmSubmit').addEventListener('click', function () {
         prepareAndSubmitForm('update');
     });
 
-    // 確定ボタン（モーダル内の「はい、確定」）
     document.getElementById('cpFixConfirmBtn').addEventListener('click', function () {
         prepareAndSubmitForm('fixed');
     });
@@ -107,13 +136,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- アイコン切り替え（既存ロジック） ---
     // ---------------------------------------------
     document.querySelectorAll('.toggle-icon').forEach(function (btn) {
+        // (変更なし)
         const targetId = btn.getAttribute('data-bs-target');
         const targetElement = document.querySelector(targetId);
         const iconElement = btn.querySelector('i');
 
         if (!targetElement || !iconElement) return;
 
-        // 初期状態に応じてアイコン設定（optional）
         if (targetElement.classList.contains('show')) {
             iconElement.classList.remove('bi-plus-lg');
             iconElement.classList.add('bi-dash-lg');
@@ -122,7 +151,6 @@ document.addEventListener('DOMContentLoaded', function () {
             iconElement.classList.add('bi-plus-lg');
         }
 
-        // Collapseイベントに応じて切り替え
         targetElement.addEventListener('shown.bs.collapse', function () {
             iconElement.classList.remove('bi-plus-lg');
             iconElement.classList.add('bi-dash-lg');
@@ -135,13 +163,18 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ---------------------------------------------
-    // --- 月選択時のデータ読み込み処理（修正） ---
+    // --- 月選択時のデータ読み込み処理 ---
     // ---------------------------------------------
     monthSelect.addEventListener('change', function () {
         const year = yearSelect.value;
         const month = monthSelect.value;
 
         if (!year || !month) return;
+
+        // データロードの直前に、まずフォームをリセットする
+        resetInputFields();
+        // 営業所セレクタの現在値を再取得（リセット後に必要）
+        currentOfficeId = officeSelect ? officeSelect.value : null;
 
         fetch(`cp_edit_load.php?year=${year}&month=${month}`)
             .then(response => response.json())
@@ -152,8 +185,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 2. monthly_cp_id を更新
                 document.getElementById('monthlyCpId').value = data.monthly_cp_id ?? '';
 
-                // 3. 現在選択されている営業所のデータをDOMに表示
-                renderOfficeToDom(officeSelect.value);
+                // 3. 現在選択されている営業所のデータをDOMに表示 (currentOfficeId を使用)
+                renderOfficeToDom(currentOfficeId);
 
                 // 4. 各明細の金額
                 if (data.details) {
@@ -170,6 +203,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(error => {
                 console.error('データ読み込みエラー:', error);
                 alert('データの読み込みに失敗しました。');
+                resetInputFields(); // エラー時もリセット
             });
     });
 
@@ -180,9 +214,18 @@ document.addEventListener('DOMContentLoaded', function () {
         let totalHours = 0;
         let totalLaborCost = 0;
 
-        // 1. 全営業所の時間データを集計
-        // 賃率はDOMから取得されるため、現在の画面の賃率が適用される
         const hourlyRate = parseFloat(document.getElementById('hourlyRate').value) || 0;
+
+        // ★ 修正: 賃率変更時に全営業所のローカルデータを更新する
+        for (const oid in officeTimeDataLocal) {
+            if (!officeTimeDataLocal[oid]) officeTimeDataLocal[oid] = {};
+            officeTimeDataLocal[oid].hourly_rate = hourlyRate;
+        }
+
+        // 最後に編集した営業所のデータをローカル変数に反映
+        if (currentOfficeId) {
+            captureCurrentOfficeTime(currentOfficeId);
+        }
 
         for (const officeId in officeTimeDataLocal) {
             if (officeTimeDataLocal.hasOwnProperty(officeId)) {
@@ -192,35 +235,28 @@ document.addEventListener('DOMContentLoaded', function () {
                 const overtime = parseFloat(data.overtime_hours) || 0;
                 const transferred = parseFloat(data.transferred_hours) || 0;
 
-                // 全営業所の総時間に加算
                 totalHours += (standard + overtime + transferred);
             }
         }
 
-        // 労務費の計算: 総時間 × 賃率
         totalLaborCost = Math.round(totalHours * hourlyRate);
 
-        // 2. 総時間と労務費の結果をDOMに反映
         document.getElementById('totalHours').textContent = totalHours.toFixed(2) + ' 時間';
         document.getElementById('laborCost').textContent = totalLaborCost.toLocaleString();
 
-        // 3. 経費合計と勘定科目ごとの集計（表示中の営業所のみ）
         let expenseTotal = 0;
         const accountTotals = {};
 
         document.querySelectorAll('.detail-input').forEach(input => {
             const val = parseFloat(input.value) || 0;
             const accountId = input.dataset.accountId;
-
             expenseTotal += val;
-
             if (!accountTotals[accountId]) {
                 accountTotals[accountId] = 0;
             }
             accountTotals[accountId] += val;
         });
 
-        // 各勘定科目の合計欄を更新
         for (const [accountId, sum] of Object.entries(accountTotals)) {
             const target = document.getElementById(`total-account-${accountId}`);
             if (target) {
@@ -230,9 +266,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // 4. 総合計の計算: 経費合計 + 労務費
         const grandTotal = expenseTotal + totalLaborCost;
-
         document.getElementById('expenseTotal').textContent = expenseTotal.toLocaleString();
         document.getElementById('grandTotal').textContent = grandTotal.toLocaleString();
     }
@@ -243,22 +277,16 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.detail-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')
         .forEach(input => {
             input.addEventListener('input', function () {
-                // 賃率入力の場合
+                // (変更なし)
                 if (input === hourlyRateInput) {
                     const v = hourlyRateInput.value;
                     const rate = (v === '' ? '' : parseFloat(v));
-
-                    // 全国共通賃率として、全営業所の hourly_rate を更新
                     for (const oid in officeTimeDataLocal) {
                         if (!officeTimeDataLocal[oid]) officeTimeDataLocal[oid] = {};
                         officeTimeDataLocal[oid].hourly_rate = rate;
                     }
                 }
-
-                // 現在の営業所の全データをローカル変数に保存
                 captureCurrentOfficeTime(currentOfficeId);
-
-                // 合計を更新
                 updateTotals();
             });
         });
