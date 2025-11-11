@@ -45,30 +45,34 @@ function registerMonthlyCp(array $data, $dbh = null)
         // monthly_cp_time 登録（営業所ごと）
         $stmtTime = $dbh->prepare("
             INSERT INTO monthly_cp_time 
-            (monthly_cp_id, office_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (monthly_cp_id, office_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count, type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cp')
         ");
 
         foreach ($officeTimeData as $office_id => $time) {
-            $rateToInsert = (float)($time['hourly_rate'] ?? $hourly_rate_common);
+            // CPでは賃率は営業所ごとに持つが、JSロジック上は共通賃率として送信されるため、共通賃率を優先
+            $rateToInsert = (float)($hourly_rate_common);
+
             $stmtTime->execute([
                 $monthly_cp_id,
                 $office_id,
                 $time['standard_hours'] ?? 0,
                 $time['overtime_hours'] ?? 0,
                 $time['transferred_hours'] ?? 0,
-                $rateToInsert, // ★ 修正後の値
+                $rateToInsert,
                 $time['fulltime_count'] ?? 0,
                 $time['contract_count'] ?? 0,
                 $time['dispatch_count'] ?? 0
             ]);
         }
 
-        // monthly_cp_details 登録（フォームで送信された accounts[detail_id] 配列対応）
-        $stmtDetail = $dbh->prepare("INSERT INTO monthly_cp_details (monthly_cp_id, detail_id, amount) VALUES (?, ?, ?)");
+        // monthly_cp_details 登録
+        $stmtDetail = $dbh->prepare("INSERT INTO monthly_cp_details (monthly_cp_id, detail_id, amount, type) VALUES (?, ?, ?, 'cp')");
         foreach ($accountsData as $detail_id => $amount) {
-            if ($amount !== '' && $amount !== null) {
-                $stmtDetail->execute([$monthly_cp_id, $detail_id, $amount]);
+            // マイナス値も登録できるように != 0 でチェック
+            $amountValue = (float)($amount ?? 0);
+            if ($amountValue != 0) {
+                $stmtDetail->execute([$monthly_cp_id, $detail_id, $amountValue]);
             }
         }
 
@@ -106,10 +110,8 @@ function updateMonthlyCp(array $post, PDO $dbh)
 
     $officeTimeDataRaw = $post['officeTimeData'] ?? '[]';
     if (is_string($officeTimeDataRaw)) {
-        // 文字列の場合はJSONとしてデコード
         $officeTimeData = json_decode($officeTimeDataRaw, true);
     } elseif (is_array($officeTimeDataRaw)) {
-        // 既に配列の場合はそのまま使用
         $officeTimeData = $officeTimeDataRaw;
     } else {
         $officeTimeData = [];
@@ -123,10 +125,9 @@ function updateMonthlyCp(array $post, PDO $dbh)
         // ----------------------------
         $amounts = $post['amounts'] ?? [];
 
-        // 既存データをチェックし、更新/挿入
         $stmtCheckDetail = $dbh->prepare("
             SELECT id FROM monthly_cp_details 
-            WHERE monthly_cp_id = ? AND detail_id = ?
+            WHERE monthly_cp_id = ? AND detail_id = ? AND type = 'cp'
         ");
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_cp_details
@@ -134,52 +135,56 @@ function updateMonthlyCp(array $post, PDO $dbh)
             WHERE id = ?
         ");
         $stmtInsertDetail = $dbh->prepare("
-            INSERT INTO monthly_cp_details (monthly_cp_id, detail_id, amount)
-            VALUES (?, ?, ?)
+            INSERT INTO monthly_cp_details (monthly_cp_id, detail_id, amount, type)
+            VALUES (?, ?, ?, 'cp')
         ");
         $stmtDeleteDetail = $dbh->prepare("
             DELETE FROM monthly_cp_details
-            WHERE monthly_cp_id = ? AND detail_id = ?
+            WHERE monthly_cp_id = ? AND detail_id = ? AND type = 'cp'
         ");
 
         foreach ($amounts as $detail_id => $amount) {
-            $amount = (float)($amount === "" || $amount === null ? 0 : $amount);
+            $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
+            $detail_id = (int)$detail_id;
 
             $stmtCheckDetail->execute([$monthly_cp_id, $detail_id]);
             $existingId = $stmtCheckDetail->fetchColumn();
 
-            if ($amount > 0) {
+            // $amountValue != 0 でチェック (マイナス対応)
+            if ($amountValue != 0) {
                 if ($existingId) {
-                    $stmtUpdateDetail->execute([$amount, $existingId]);
+                    $stmtUpdateDetail->execute([$amountValue, $existingId]);
                 } else {
-                    $stmtInsertDetail->execute([$monthly_cp_id, $detail_id, $amount]);
+                    $stmtInsertDetail->execute([$monthly_cp_id, $detail_id, $amountValue]);
                 }
             } elseif ($existingId) {
-                // 金額が 0 または空で、既存のレコードがある場合は削除
+                // 金額が 0 の場合のみ削除
                 $stmtDeleteDetail->execute([$monthly_cp_id, $detail_id]);
             }
         }
 
 
         // ----------------------------
-        // 2. 営業所別時間データの更新/追加（hourly_rateは全国共通で使用）
+        // 2. 営業所別時間データの更新/追加
         // ----------------------------
         if (!empty($officeTimeData) && is_array($officeTimeData)) {
+            // POSTデータから共通賃率を取得
+            $hourly_rate_common = (float)($post['hourly_rate'] ?? 0);
 
             $stmtCheckTime = $dbh->prepare("
                 SELECT id FROM monthly_cp_time 
-                WHERE monthly_cp_id = ? AND office_id = ?
+                WHERE monthly_cp_id = ? AND office_id = ? AND type = 'cp'
             ");
             $stmtUpdateTime = $dbh->prepare("
                 UPDATE monthly_cp_time SET
                     standard_hours = ?, overtime_hours = ?, transferred_hours = ?, hourly_rate = ?,
                     fulltime_count = ?, contract_count = ?, dispatch_count = ?
                 WHERE id = ?
-            ");
+            "); // updated_at はDB自動更新
             $stmtInsertTime = $dbh->prepare("
                 INSERT INTO monthly_cp_time
-                (monthly_cp_id, office_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (monthly_cp_id, office_id, standard_hours, overtime_hours, transferred_hours, hourly_rate, fulltime_count, contract_count, dispatch_count, type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cp')
             ");
 
             foreach ($officeTimeData as $office_id => $time) {
@@ -192,7 +197,8 @@ function updateMonthlyCp(array $post, PDO $dbh)
                 $full = (int)($time['fulltime_count'] ?? 0);
                 $contract = (int)($time['contract_count'] ?? 0);
                 $dispatch = (int)($time['dispatch_count'] ?? 0);
-                $rate = (float)($time['hourly_rate'] ?? 0); // 賃率は各営業所データに格納
+                // 共通賃率を使用
+                $rate = $hourly_rate_common;
 
                 $stmtCheckTime->execute([$monthly_cp_id, $office_id]);
                 $existingId = $stmtCheckTime->fetchColumn();
@@ -241,21 +247,17 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
     $month = $cpInfo['month'];
 
     try {
-        // =========================================================
         // 1. monthly_forecast (親テーブル) への挿入/更新
-        // =========================================================
-
-        // 確定したCPデータから共通賃率を取得
-        $rateStmt = $dbh->prepare("SELECT hourly_rate FROM monthly_cp_time WHERE monthly_cp_id = ? LIMIT 1");
+        $rateStmt = $dbh->prepare("SELECT hourly_rate FROM monthly_cp_time WHERE monthly_cp_id = ? AND type = 'cp' LIMIT 1"); // ★ 修正: type='cp'
         $rateStmt->execute([$monthly_cp_id]);
         $hourlyRate = $rateStmt->fetchColumn() ?? 0;
 
         $forecastSql = "
             INSERT INTO monthly_forecast (year, month, hourly_rate, status)
-            VALUES (:year, :month, :hourly_rate, 'draft') /* 修正: CP確定後、Forecastは'draft'で初期化 */
+            VALUES (:year, :month, :hourly_rate, 'draft')
             ON DUPLICATE KEY UPDATE 
                 hourly_rate = :hourly_rate_update,
-                status = 'draft' /* 修正: CP確定後、Forecastは'draft'で初期化 */
+                status = 'draft'
         ";
         $forecastStmt = $dbh->prepare($forecastSql);
         $forecastStmt->execute([
@@ -265,30 +267,23 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
             ':hourly_rate_update' => $hourlyRate
         ]);
 
-        // 挿入または更新された monthly_forecast の ID を取得
         $monthlyForecastId = $dbh->lastInsertId() ?: getMonthlyForecastId($year, $month, $dbh);
         if (!$monthlyForecastId) {
             throw new Exception("monthly_forecast IDの取得に失敗しました。");
         }
 
-        // =========================================================
         // 2. monthly_forecast_time (子テーブル) への挿入/更新
-        // ... (省略: 以前のロジックをそのまま使用)
-        // =========================================================
-
-        // 既存のCP時間データ (monthly_cp_time) を取得
         $cpTimeQuery = "
             SELECT 
                 office_id, standard_hours, overtime_hours, transferred_hours,
                 fulltime_count, contract_count, dispatch_count
             FROM monthly_cp_time
-            WHERE monthly_cp_id = :cp_id
+            WHERE monthly_cp_id = :cp_id AND type = 'cp'
         ";
         $cpTimeStmt = $dbh->prepare($cpTimeQuery);
         $cpTimeStmt->execute([':cp_id' => $monthly_cp_id]);
         $cpTimeData = $cpTimeStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 挿入・更新を効率的に行うための SQL
         $timeSql = "
             INSERT INTO monthly_forecast_time (
                 monthly_forecast_id, office_id, standard_hours, overtime_hours, transferred_hours,
@@ -319,18 +314,14 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
             ]);
         }
 
-        // =========================================================
         // 3. monthly_forecast_details (経費明細) への挿入/更新
-        // =========================================================
-
-        // 既存の明細データを全て削除してから再挿入する
         $dbh->prepare("DELETE FROM monthly_forecast_details WHERE forecast_id = :forecast_id")
             ->execute([':forecast_id' => $monthlyForecastId]);
 
         $cpDetailQuery = "
             SELECT detail_id, amount
             FROM monthly_cp_details
-            WHERE monthly_cp_id = :cp_id
+            WHERE monthly_cp_id = :cp_id AND type = 'cp'
         ";
         $cpDetailStmt = $dbh->prepare($cpDetailQuery);
         $cpDetailStmt->execute([':cp_id' => $monthly_cp_id]);
@@ -339,11 +330,13 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
             INSERT INTO monthly_forecast_details (forecast_id, detail_id, amount)
             VALUES (?, ?, ?)
         ";
-        $detailStmt = $dbh->prepare($detailSql);
+        $stmtDetail = $dbh->prepare($detailSql);
 
         foreach ($cpDetailData as $row) {
-            if ($row['amount'] > 0) {
-                $detailStmt->execute([$monthlyForecastId, $row['detail_id'], $row['amount']]);
+            // マイナス値も反映できるように != 0 でチェック
+            $amountValue = (float)($row['amount'] ?? 0);
+            if ($amountValue != 0) {
+                $stmtDetail->execute([$monthlyForecastId, $row['detail_id'], $amountValue]);
             }
         }
 
@@ -356,10 +349,6 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
 
 /**
  * CPの確定処理（更新と見通しへの反映を含む）
- *
- * @param array $data POSTデータ
- * @param PDO|null $dbh
- * @throws Exception
  */
 function confirmMonthlyCp(array $data, $dbh = null)
 {

@@ -52,7 +52,7 @@ function updateMonthlyPlan(array $data, PDO $dbh)
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
                 fulltime_count = ?, contract_count = ?, dispatch_count = ?
             WHERE id = ?
-        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+        ");
 
         $stmtInsertTime = $dbh->prepare("
             INSERT INTO monthly_plan_time
@@ -94,34 +94,39 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             UPDATE monthly_plan_details
             SET amount = ?
             WHERE id = ?
-        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+        ");
 
         $stmtInsertDetail = $dbh->prepare("
             INSERT INTO monthly_plan_details (plan_id, detail_id, amount)
             VALUES (?, ?, ?)
         ");
-        // ★ 追加: DELETE文
+        // DELETE文
         $stmtDeleteDetail = $dbh->prepare("
             DELETE FROM monthly_plan_details
             WHERE plan_id = ? AND detail_id = ?
         ");
 
+
+        // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
-                $amount = (float)($amount ?? 0);
+                // 空文字やnullは 0.0 としてキャスト
+                $amountValue = (float)($amount ?? 0);
                 $detail_id = (int)$detail_id;
 
                 $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
                 $existingId = $stmtCheckDetail->fetchColumn();
 
-                if ($amount > 0) {
+                // $amount > 0 を $amountValue != 0 に変更
+                if ($amountValue != 0) {
+                    // (プラスまたはマイナスの金額)
                     if ($existingId) {
-                        $stmtUpdateDetail->execute([$amount, $existingId]);
+                        $stmtUpdateDetail->execute([$amountValue, $existingId]);
                     } else {
-                        $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amount]);
+                        $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amountValue]);
                     }
                 } elseif ($existingId) {
-                    // ★ 追加: 金額が 0 または空で、既存のレコードがある場合は削除
+                    // 金額が 0 の場合のみ、既存のレコードを削除
                     $stmtDeleteDetail->execute([$detail_parent_id, $detail_id]);
                 }
             }
@@ -130,7 +135,10 @@ function updateMonthlyPlan(array $data, PDO $dbh)
         throw new Exception("予定の更新中にエラーが発生しました: " . $e->getMessage());
     }
 }
-// ... (confirmMonthlyPlan, reflectToOutlook, getMonthlyPlanId, getMonthlyOutlookId は変更なし) ...
+
+/**
+ * 予定確定処理（ステータス変更＆次の工程(Outlook)へデータ反映）
+ */
 function confirmMonthlyPlan(array $data, PDO $dbh)
 {
     $plan_id = $data['plan_id'] ?? null;
@@ -152,6 +160,10 @@ function confirmMonthlyPlan(array $data, PDO $dbh)
         throw new Exception("予定の確定中にエラーが発生しました: " . $e->getMessage());
     }
 }
+
+/**
+ * 予定データから月末見込み(Outlook)テーブルへデータを反映する処理
+ */
 function reflectToOutlook(int $plan_id, PDO $dbh)
 {
     // 1. 参照元の年/月/賃率情報を取得

@@ -52,7 +52,7 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
                 fulltime_count = ?, contract_count = ?, dispatch_count = ?
             WHERE id = ?
-        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+        "); // updated_at は削除済み (正しい)
 
         $stmtInsertTime = $dbh->prepare("
             INSERT INTO monthly_outlook_time
@@ -94,7 +94,7 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
             UPDATE monthly_outlook_details
             SET amount = ?
             WHERE id = ?
-        "); // ★ 修正: updated_at = NOW() を削除 (DB自動更新に任せる)
+        "); // updated_at は削除済み (正しい)
 
         $stmtInsertDetail = $dbh->prepare("
             INSERT INTO monthly_outlook_details (outlook_id, detail_id, amount)
@@ -106,22 +106,26 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
             WHERE outlook_id = ? AND detail_id = ?
         ");
 
+        // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
-                $amount = (float)($amount ?? 0);
+                // ★ 修正: 空文字やnullは 0.0 としてキャスト
+                $amountValue = (float)($amount ?? 0);
                 $detail_id = (int)$detail_id;
 
                 $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
                 $existingId = $stmtCheckDetail->fetchColumn();
 
-                if ($amount > 0) {
+                // ★ 修正: $amount > 0 を $amountValue != 0 に変更
+                if ($amountValue != 0) {
+                    // (プラスまたはマイナスの金額)
                     if ($existingId) {
-                        $stmtUpdateDetail->execute([$amount, $existingId]);
+                        $stmtUpdateDetail->execute([$amountValue, $existingId]);
                     } else {
-                        $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amount]);
+                        $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amountValue]);
                     }
                 } elseif ($existingId) {
-                    // ★ 追加: 金額が 0 または空で、既存のレコードがある場合は削除
+                    // ★ 追加: 金額が 0 の場合のみ、既存のレコードを削除
                     $stmtDeleteDetail->execute([$detail_parent_id, $detail_id]);
                 }
             }
@@ -130,7 +134,11 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
         throw new Exception("月末見込みの更新中にエラーが発生しました: " . $e->getMessage());
     }
 }
-// ... (confirmMonthlyOutlook, reflectToResult, getMonthlyOutlookId, getMonthlyResultId は変更なし) ...
+
+/**
+ * 月末見込み確定処理（ステータス変更＆次の工程(Result)へデータ反映）
+ * (変更なし)
+ */
 function confirmMonthlyOutlook(array $data, PDO $dbh)
 {
     $outlook_id = $data['outlook_id'] ?? null;
@@ -152,6 +160,11 @@ function confirmMonthlyOutlook(array $data, PDO $dbh)
         throw new Exception("月末見込みの確定中にエラーが発生しました: " . $e->getMessage());
     }
 }
+
+/**
+ * 月末見込みデータから概算実績(Result)テーブルへデータを反映する処理
+ * (変更なし)
+ */
 function reflectToResult(int $outlook_id, PDO $dbh)
 {
     // 1. 参照元の年/月/賃率情報を取得
