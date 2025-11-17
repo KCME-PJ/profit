@@ -12,44 +12,48 @@ if (!is_array($officeTimeData)) {
     $officeTimeData = json_decode($officeTimeData, true) ?? [];
 }
 
+// ★ 修正: forecast_update.php L15-L17 を参考に revenues と hourly_rate を追加
 $detailAmounts = $_POST['amounts'] ?? [];
+$revenueAmounts = $_POST['revenues'] ?? [];
+$hourly_rate = $_POST['hourly_rate'] ?? 0;
 $planId = $_POST['plan_id'] ?? null;
+
 
 $dbh = getDb();
 $dbh->beginTransaction();
 
 try {
-    // フォームデータ構造をDB関数が期待する形式に再構築
+    // ★ 修正: DB関数に渡す $data 配列を正しく構築
     $data = [
         'plan_id' => $planId,
         'year' => $year,
         'month' => $month,
-        'officeTimeData' => $officeTimeData,
-        'amounts' => $detailAmounts,
+        'hourly_rate' => $hourly_rate, // 共通賃率
+        'officeTimeData' => $officeTimeData, // 時間・人数
+        'amounts' => $detailAmounts,      // 経費
+        'revenues' => $revenueAmounts      // 収入
     ];
 
+    // ★ 修正: forecast_update.php L37-L44 を参考に $message を設定
     if ($actionType === 'fixed') {
         // 確定処理: update後にoutlookへ反映
         confirmMonthlyPlan($data, $dbh);
-
-        // 成功リダイレクト (確定時はメッセージを残す)
-        $redirectUrl = "plan_edit.php?success=1&year={$year}&month={$month}";
+        $message = "予定の確定・月末見込みへの反映が完了しました。";
     } else {
         // 修正処理: updateのみ
         updateMonthlyPlan($data, $dbh);
-
-        // 修正リダイレクト (メッセージを残す)
-        $redirectUrl = "plan_edit.php?success=1&year={$year}&month={$month}";
+        $message = "予定の更新が完了しました。";
     }
 
     $dbh->commit();
 
-    // 成功リダイレクト
+    // ★ 修正: 成功リダイレクト (msg パラメータを使用)
+    $redirectUrl = "plan_edit.php?success=1&year={$year}&month={$month}&msg=" . urlencode($message);
     header("Location: {$redirectUrl}");
     exit;
 } catch (Exception $e) {
     $dbh->rollBack();
-    // エラーリダイレクト
+    // エラーリダイレクト (修正なし)
     $redirectUrl = "plan_edit.php?error=" . urlencode("登録エラー: " . str_replace('見通し', '予定', $e->getMessage())) . "&year={$year}&month={$month}";
     header("Location: {$redirectUrl}");
     exit;

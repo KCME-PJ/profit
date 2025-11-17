@@ -14,7 +14,7 @@ $month = (int)$_GET['month'];
 try {
     $dbh = getDb();
 
-    // 時間管理データ（全営業所）を取得
+    // 1. 時間管理データ（全営業所）を取得 (変更なし)
     $timeQuery = "
         SELECT
             mcp.id AS monthly_cp_id,
@@ -36,7 +36,7 @@ try {
     $timeStmt->execute(['year' => $year, 'month' => $month]);
     $timeRows = $timeStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // office_id をキーにして配列化
+    // (データ整形 - 変更なし)
     $officeData = [];
     $monthly_cp_id = 0;
     $status = 'draft';
@@ -57,7 +57,7 @@ try {
         $status = $row['status'] ?? $status;
     }
 
-    // 勘定科目詳細
+    // 2. 勘定科目詳細 (経費) (変更なし)
     $detailsQuery = "
         SELECT d.id AS detail_id, COALESCE(mcpd.amount, 0) AS amount
         FROM details d
@@ -70,11 +70,30 @@ try {
     $detailsStmt->execute(['year' => $year, 'month' => $month]);
     $detailsData = $detailsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // ★ 修正点 1: 収入データを取得 (ここから追加)
+    $revenueQuery = "
+        SELECT 
+            ri.id AS revenue_item_id, 
+            COALESCE(mcpr.amount, 0) AS amount
+        FROM revenue_items ri
+        LEFT JOIN monthly_cp mcp 
+            ON mcp.year = :year AND mcp.month = :month
+        LEFT JOIN monthly_cp_revenues mcpr 
+            ON ri.id = mcpr.revenue_item_id AND mcp.id = mcpr.monthly_cp_id
+    ";
+    $revenueStmt = $dbh->prepare($revenueQuery);
+    $revenueStmt->execute(['year' => $year, 'month' => $month]);
+    $revenueData = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
+    // (ここまで追加)
+
+
+    // ★ 修正点 2: JSONレスポンスに 'revenues' を追加
     echo json_encode([
         'monthly_cp_id' => $monthly_cp_id,
         'status' => $status,
         'offices' => $officeData,
         'details' => array_column($detailsData, 'amount', 'detail_id'),
+        'revenues' => array_column($revenueData, 'amount', 'revenue_item_id') // ★ 追加
     ]);
 } catch (Exception $e) {
     echo json_encode(['error' => $e->getMessage()]);

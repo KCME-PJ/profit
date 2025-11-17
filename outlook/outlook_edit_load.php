@@ -25,6 +25,7 @@ try {
         'outlook_id' => 0,
         'offices' => [], // 営業所ごとの時間データ格納キー
         'details' => [],
+        'revenues' => [], // ★ 修正: 'revenues' を追加
         'status' => 'none',
         'common_hourly_rate' => 0
     ];
@@ -66,6 +67,18 @@ try {
         $detailsData = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $response['details'] = array_column($detailsData, 'amount', 'detail_id');
+
+        // ★ 修正: 4. 収入データ (revenue_item_id ⇒ amount) の取得 (plan_edit_load.php L86-L96 をコピー・修正)
+        $revenueStmt = $dbh->prepare("
+            SELECT revenue_item_id, amount
+            FROM monthly_outlook_revenues
+            WHERE outlook_id = :outlook_id
+        ");
+        $revenueStmt->execute(['outlook_id' => $outlookId]);
+        $revenueData = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
+        $response['revenues'] = array_column($revenueData, 'amount', 'revenue_item_id');
+        // (ここまで追加)
+
     } else {
         // データが存在しない場合
         $response['status'] = 'none';

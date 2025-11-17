@@ -25,6 +25,7 @@ try {
         'monthly_forecast_id' => 0,
         'offices' => [], // 営業所ごとの時間データ格納キー
         'details' => [],
+        'revenues' => [], // ★ 収入データ用に追加
         'status' => 'none',
         'common_hourly_rate' => 0
     ];
@@ -38,7 +39,7 @@ try {
         $common_hourly_rate = (float)($forecast['hourly_rate'] ?? 0);
         $response['common_hourly_rate'] = $common_hourly_rate;
 
-        // 2. 営業所ごとの時間・人数データを取得
+        // 2. 営業所ごとの時間・人数データを取得 (変更なし)
         $timeStmt = $dbh->prepare("SELECT * FROM monthly_forecast_time WHERE monthly_forecast_id = ?");
         $timeStmt->execute([$forecastId]);
 
@@ -51,12 +52,11 @@ try {
                 'fulltime_count'    => (int)($row['fulltime_count'] ?? 0),
                 'contract_count'    => (int)($row['contract_count'] ?? 0),
                 'dispatch_count'    => (int)($row['dispatch_count'] ?? 0),
-                // 賃率は共通値として monthly_forecast から取得し、各営業所データにも含める（JSの互換性維持のため）
                 'hourly_rate'       => $common_hourly_rate,
             ];
         }
 
-        // 3. 詳細データ（detail_id ⇒ amount）の取得
+        // 3. 詳細データ（経費）の取得 (変更なし)
         $detailStmt = $dbh->prepare("
             SELECT detail_id, amount
             FROM monthly_forecast_details
@@ -64,12 +64,22 @@ try {
         ");
         $detailStmt->execute(['forecast_id' => $forecastId]);
         $detailsData = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
-
         $response['details'] = array_column($detailsData, 'amount', 'detail_id');
+
+        // ★ 修正点: 4. 収入データ (revenue_item_id ⇒ amount) の取得 (ここから追加)
+        $revenueStmt = $dbh->prepare("
+            SELECT revenue_item_id, amount
+            FROM monthly_forecast_revenues
+            WHERE forecast_id = :forecast_id
+        ");
+        $revenueStmt->execute(['forecast_id' => $forecastId]);
+        $revenueData = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
+        $response['revenues'] = array_column($revenueData, 'amount', 'revenue_item_id');
+        // (ここまで追加)
+
     } else {
-        // データが存在しない場合、JS側がエラーにならないよう status を none に
+        // (データが存在しない場合の処理 - 変更なし)
         $response['status'] = 'none';
-        // 初期値として賃率0を設定
         $response['common_hourly_rate'] = 0;
     }
 

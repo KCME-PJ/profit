@@ -23,6 +23,9 @@ function registerMonthlyCp(array $data, $dbh = null)
     $officeTimeData = json_decode($data['officeTimeData'] ?? '[]', true); // JSON文字列を配列に変換
     $accountsData = $data['accounts'] ?? []; // array[detail_id] = 金額
 
+    // 1: 収入(revenues) データを取得
+    $revenuesData = $data['revenues'] ?? []; // array[revenue_item_id] = 金額
+
     if (empty($year) || empty($month)) {
         throw new Exception('年度と月は必須項目です。');
     }
@@ -66,7 +69,7 @@ function registerMonthlyCp(array $data, $dbh = null)
             ]);
         }
 
-        // monthly_cp_details 登録
+        // monthly_cp_details 登録 (経費)
         $stmtDetail = $dbh->prepare("INSERT INTO monthly_cp_details (monthly_cp_id, detail_id, amount, type) VALUES (?, ?, ?, 'cp')");
         foreach ($accountsData as $detail_id => $amount) {
             // マイナス値も登録できるように != 0 でチェック
@@ -75,6 +78,17 @@ function registerMonthlyCp(array $data, $dbh = null)
                 $stmtDetail->execute([$monthly_cp_id, $detail_id, $amountValue]);
             }
         }
+
+        // 2: monthly_cp_revenues 登録 (収入)
+        $stmtRevenue = $dbh->prepare("INSERT INTO monthly_cp_revenues (monthly_cp_id, revenue_item_id, amount) VALUES (?, ?, ?)");
+        foreach ($revenuesData as $revenue_item_id => $amount) {
+            $amountValue = (float)($amount ?? 0);
+            // マイナス値も登録できるように != 0 でチェック
+            if ($amountValue != 0) {
+                $stmtRevenue->execute([$monthly_cp_id, $revenue_item_id, $amountValue]);
+            }
+        }
+        // ここまで修正
 
         $dbh->commit();
     } catch (Exception $e) {
@@ -121,9 +135,11 @@ function updateMonthlyCp(array $post, PDO $dbh)
     }
     try {
         // ----------------------------
-        // 1. 勘定科目明細の更新/追加
+        // 1. 勘定科目明細(経費)の更新/追加
         // ----------------------------
         $amounts = $post['amounts'] ?? [];
+        // 3: 収入(revenues) データを取得
+        $revenues = $post['revenues'] ?? [];
 
         $stmtCheckDetail = $dbh->prepare("
             SELECT id FROM monthly_cp_details 
@@ -162,6 +178,46 @@ function updateMonthlyCp(array $post, PDO $dbh)
                 $stmtDeleteDetail->execute([$monthly_cp_id, $detail_id]);
             }
         }
+
+        // ------------------------------------------
+        // 4: 収入(Revenue)の更新/追加
+        // ------------------------------------------
+        $stmtCheckRev = $dbh->prepare("
+            SELECT id FROM monthly_cp_revenues 
+            WHERE monthly_cp_id = ? AND revenue_item_id = ?
+        ");
+        $stmtUpdateRev = $dbh->prepare("
+            UPDATE monthly_cp_revenues SET amount = ? WHERE id = ?
+        ");
+        $stmtInsertRev = $dbh->prepare("
+            INSERT INTO monthly_cp_revenues (monthly_cp_id, revenue_item_id, amount)
+            VALUES (?, ?, ?)
+        ");
+        $stmtDeleteRev = $dbh->prepare("
+            DELETE FROM monthly_cp_revenues
+            WHERE monthly_cp_id = ? AND revenue_item_id = ?
+        ");
+
+        foreach ($revenues as $revenue_item_id => $amount) {
+            $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
+            $revenue_item_id = (int)$revenue_item_id;
+
+            $stmtCheckRev->execute([$monthly_cp_id, $revenue_item_id]);
+            $existingId = $stmtCheckRev->fetchColumn();
+
+            if ($amountValue != 0) { // マイナス対応
+                if ($existingId) {
+                    $stmtUpdateRev->execute([$amountValue, $existingId]);
+                } else {
+                    $stmtInsertRev->execute([$monthly_cp_id, $revenue_item_id, $amountValue]);
+                }
+            } elseif ($existingId) {
+                // 金額が 0 (または空) の場合は削除
+                $stmtDeleteRev->execute([$monthly_cp_id, $revenue_item_id]);
+            }
+        }
+        // ここまで追加
+        // ------------------------------------------
 
 
         // ----------------------------
@@ -248,7 +304,7 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
 
     try {
         // 1. monthly_forecast (親テーブル) への挿入/更新
-        $rateStmt = $dbh->prepare("SELECT hourly_rate FROM monthly_cp_time WHERE monthly_cp_id = ? AND type = 'cp' LIMIT 1"); // ★ 修正: type='cp'
+        $rateStmt = $dbh->prepare("SELECT hourly_rate FROM monthly_cp_time WHERE monthly_cp_id = ? AND type = 'cp' LIMIT 1");
         $rateStmt->execute([$monthly_cp_id]);
         $hourlyRate = $rateStmt->fetchColumn() ?? 0;
 
@@ -326,6 +382,7 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
         $cpDetailStmt = $dbh->prepare($cpDetailQuery);
         $cpDetailStmt->execute([':cp_id' => $monthly_cp_id]);
         $cpDetailData = $cpDetailStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $detailSql = "
             INSERT INTO monthly_forecast_details (forecast_id, detail_id, amount)
             VALUES (?, ?, ?)
@@ -339,6 +396,43 @@ function reflectToForecast(int $monthly_cp_id, PDO $dbh)
                 $stmtDetail->execute([$monthlyForecastId, $row['detail_id'], $amountValue]);
             }
         }
+
+        // ------------------------------------------
+        // 5: 収入(Revenue)の見通しへの反映
+        // ------------------------------------------
+        // 1. 見通し側の既存の収入データを削除
+        $stmtDeleteForecastRev = $dbh->prepare(
+            "DELETE FROM monthly_forecast_revenues WHERE forecast_id = :forecast_id"
+        );
+        $stmtDeleteForecastRev->execute([':forecast_id' => $monthlyForecastId]);
+
+        // 2. CP側の収入データを取得
+        $cpRevenueQuery = "
+            SELECT revenue_item_id, amount
+            FROM monthly_cp_revenues
+            WHERE monthly_cp_id = :cp_id
+        ";
+        $cpRevenueStmt = $dbh->prepare($cpRevenueQuery);
+        $cpRevenueStmt->execute([':cp_id' => $monthly_cp_id]);
+        $cpRevenueData = $cpRevenueStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. 見通し側のテーブルに挿入
+        $revenueSql = "
+            INSERT INTO monthly_forecast_revenues (forecast_id, revenue_item_id, amount)
+            VALUES (?, ?, ?)
+        ";
+
+        $stmtRevenue = $dbh->prepare($revenueSql);
+
+        foreach ($cpRevenueData as $row) {
+            $amountValue = (float)($row['amount'] ?? 0);
+            if ($amountValue != 0) {
+                $stmtRevenue->execute([$monthlyForecastId, $row['revenue_item_id'], $amountValue]);
+            }
+        }
+        // ここまで追加
+        // ------------------------------------------
+
 
         return true;
     } catch (Exception $e) {

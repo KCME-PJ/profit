@@ -16,6 +16,8 @@ function updateMonthlyPlan(array $data, PDO $dbh)
     $plan_id = $data['plan_id'];
     $officeTimeData = $data['officeTimeData'] ?? [];
     $amounts = $data['amounts'] ?? [];
+    $revenues = $data['revenues'] ?? [];
+    $hourly_rate = (float)($data['hourly_rate'] ?? 0);
 
     // 確定ステータスのチェック (Fixedデータは修正不可)
     $stmtStatusCheck = $dbh->prepare("SELECT status FROM monthly_plan WHERE id = ?");
@@ -27,20 +29,10 @@ function updateMonthlyPlan(array $data, PDO $dbh)
     }
 
     try {
-        // 1. 親テーブル (monthly_plan) の更新
-        $stmtHourlyRate = $dbh->prepare("SELECT hourly_rate FROM monthly_plan WHERE id = ?");
-        $stmtHourlyRate->execute([$plan_id]);
-        $currentRate = $stmtHourlyRate->fetchColumn();
 
-        if ($currentRate === false) {
-            throw new Exception("対象の予定データが見つかりません。");
-        }
-
-        $firstOfficeData = reset($officeTimeData);
-        $hourly_rate = (float)($firstOfficeData['hourly_rate'] ?? $currentRate ?? 0);
-
+        // 1. 親テーブル (monthly_plan) の更新 (共通賃率)
         $stmtParent = $dbh->prepare("UPDATE monthly_plan SET hourly_rate = ?, updated_at = NOW() WHERE id = ?");
-        $stmtParent->execute([$hourly_rate, $plan_id]);
+        $stmtParent->execute([$hourly_rate, $plan_id]); // 取得した $hourly_rate を使用
 
         // 2. 営業所別時間データ (monthly_plan_time) の更新/追加
         $stmtCheckTime = $dbh->prepare("
@@ -50,14 +42,17 @@ function updateMonthlyPlan(array $data, PDO $dbh)
         $stmtUpdateTime = $dbh->prepare("
             UPDATE monthly_plan_time SET
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
-                fulltime_count = ?, contract_count = ?, dispatch_count = ?
+                fulltime_count = ?, contract_count = ?, dispatch_count = ?, updated_at = NOW()
             WHERE id = ?
         ");
-
         $stmtInsertTime = $dbh->prepare("
             INSERT INTO monthly_plan_time
             (monthly_plan_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtDeleteTime = $dbh->prepare("
+            DELETE FROM monthly_plan_time
+            WHERE monthly_plan_id = ? AND office_id = ?
         ");
 
         foreach ($officeTimeData as $office_id => $time) {
@@ -74,12 +69,19 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             $stmtCheckTime->execute([$plan_id, $office_id]);
             $existingId = $stmtCheckTime->fetchColumn();
 
-            if ($existingId) {
-                $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+            if ($standard == 0 && $overtime == 0 && $transfer == 0 && $full == 0 && $contract == 0 && $dispatch == 0) {
+                if ($existingId) {
+                    $stmtDeleteTime->execute([$plan_id, $office_id]);
+                }
             } else {
-                $stmtInsertTime->execute([$plan_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                if ($existingId) {
+                    $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+                } else {
+                    $stmtInsertTime->execute([$plan_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                }
             }
         }
+        // 営業所別時間データの修正ここまで
 
         // ----------------------------
         // 3. 勘定科目明細 (monthly_plan_details) の更新/追加
@@ -106,18 +108,16 @@ function updateMonthlyPlan(array $data, PDO $dbh)
             WHERE plan_id = ? AND detail_id = ?
         ");
 
-
         // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
                 // 空文字やnullは 0.0 としてキャスト
-                $amountValue = (float)($amount ?? 0);
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
                 $detail_id = (int)$detail_id;
 
                 $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
                 $existingId = $stmtCheckDetail->fetchColumn();
 
-                // $amount > 0 を $amountValue != 0 に変更
                 if ($amountValue != 0) {
                     // (プラスまたはマイナスの金額)
                     if ($existingId) {
@@ -131,6 +131,48 @@ function updateMonthlyPlan(array $data, PDO $dbh)
                 }
             }
         }
+
+        // ----------------------------
+        // 4. 収入明細 (monthly_plan_revenues) の更新/追加
+        // ----------------------------
+        $stmtCheckRev = $dbh->prepare("
+            SELECT id FROM monthly_plan_revenues 
+            WHERE plan_id = ? AND revenue_item_id = ?
+        ");
+        $stmtUpdateRev = $dbh->prepare("
+            UPDATE monthly_plan_revenues SET amount = ? WHERE id = ?
+        ");
+        $stmtInsertRev = $dbh->prepare("
+            INSERT INTO monthly_plan_revenues (plan_id, revenue_item_id, amount)
+            VALUES (?, ?, ?)
+        ");
+        $stmtDeleteRev = $dbh->prepare("
+            DELETE FROM monthly_plan_revenues
+            WHERE plan_id = ? AND revenue_item_id = ?
+        ");
+
+        if (!empty($revenues)) {
+            foreach ($revenues as $revenue_item_id => $amount) {
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
+                $revenue_item_id = (int)$revenue_item_id;
+
+                $stmtCheckRev->execute([$plan_id, $revenue_item_id]);
+                $existingId = $stmtCheckRev->fetchColumn();
+
+                if ($amountValue != 0) { // マイナス対応
+                    if ($existingId) {
+                        $stmtUpdateRev->execute([$amountValue, $existingId]);
+                    } else {
+                        $stmtInsertRev->execute([$plan_id, $revenue_item_id, $amountValue]);
+                    }
+                } elseif ($existingId) {
+                    // 金額が 0 (または空) の場合は削除
+                    $stmtDeleteRev->execute([$plan_id, $revenue_item_id]);
+                }
+            }
+        }
+        // 収入明細の追加ここまで
+
     } catch (Exception $e) {
         throw new Exception("予定の更新中にエラーが発生しました: " . $e->getMessage());
     }
@@ -219,10 +261,22 @@ function reflectToOutlook(int $plan_id, PDO $dbh)
             WHERE plan_id = ?
         ");
         $stmtCopyDetails->execute([$outlookId, $plan_id]);
+
+        // 4. monthly_outlook_revenues (収入明細) への処理
+        $stmtCopyRevenues = $dbh->prepare("
+            INSERT INTO monthly_outlook_revenues (outlook_id, revenue_item_id, amount)
+            SELECT ?, revenue_item_id, amount
+            FROM monthly_plan_revenues
+            WHERE plan_id = ?
+        ");
+        $stmtCopyRevenues->execute([$outlookId, $plan_id]);
+        // 収入コピーの追加ここまで
+
     } catch (Exception $e) {
         throw new Exception("月末見込み(Outlook)への反映中にエラーが発生しました: " . $e->getMessage());
     }
 }
+
 function getMonthlyPlanId(int $year, int $month, PDO $dbh): ?int
 {
     $stmt = $dbh->prepare("SELECT id FROM monthly_plan WHERE year = ? AND month = ? LIMIT 1");
@@ -230,6 +284,7 @@ function getMonthlyPlanId(int $year, int $month, PDO $dbh): ?int
     $id = $stmt->fetchColumn();
     return $id !== false ? (int)$id : null;
 }
+
 function getMonthlyOutlookId(int $year, int $month, PDO $dbh): ?int
 {
     $stmt = $dbh->prepare("SELECT id FROM monthly_outlook WHERE year = ? AND month = ? LIMIT 1");

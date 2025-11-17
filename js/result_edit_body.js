@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let officeTimeDataLocal = {};
     let currentOfficeId = officeSelect ? officeSelect.value : null;
 
-    // 1. 初期ロード（PHPから渡された全営業所のJSONをパース）
+    // 初期ロード（PHPから渡された全営業所のJSONをパース）
     try {
         const initialJson = hiddenTime ? hiddenTime.value : "{}";
         officeTimeDataLocal = JSON.parse(initialJson || "{}");
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
         console.error('初期データのパースに失敗:', e);
     }
 
-    // 2. 現在の DOM の値をローカル変数に保存（入力や営業所切り替え時に実行）
+    // 現在の DOM の値をローカル変数に保存（入力や営業所切り替え時に実行）
     function captureCurrentOfficeTime(oid) {
         if (!oid) return;
 
@@ -49,10 +49,12 @@ document.addEventListener('DOMContentLoaded', function () {
             officeTimeDataLocal[id].hourly_rate = currentRate;
         }
 
+        // data.hourly_rate のセットを追加
+        data.hourly_rate = currentRate;
         officeTimeDataLocal[oid] = data;
     }
 
-    // 3. ローカル変数の値を DOM に復元して表示（営業所切り替え時や初期表示時に実行）
+    // ローカル変数の値を DOM に復元して表示（営業所切り替え時や初期表示時に実行）
     function renderOfficeToDom(oid) {
         if (!oid || !officeSelect) return;
         const data = officeTimeDataLocal[oid] || {};
@@ -72,21 +74,17 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTotals();
     }
 
-    // 4. フォーム送信前処理（修正・確定ボタンクリック時に実行）
+    // フォーム送信前処理（確定ボタンクリック時に実行）
     function prepareAndSubmitForm(action) {
         if (!monthSelect.value) {
-            console.error('年度と月が選択されていません。');
+            alert('年度と月が選択されていません。');
             return;
         }
         captureCurrentOfficeTime(currentOfficeId);
         if (hiddenTime) {
             hiddenTime.value = JSON.stringify(officeTimeDataLocal);
         }
-        if (form) {
-            form.querySelectorAll('[name="standard_hours"], [name="overtime_hours"], [name="transferred_hours"], [name="fulltime_count"], [name="contract_count"], [name="dispatch_count"]').forEach(input => {
-                input.value = 0;
-            });
-        }
+
         document.getElementById('resultMode').value = action;
         form.submit();
     }
@@ -103,6 +101,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 timeFields[key].value = '';
             }
         }
+
+        // 収入明細 (金額) をクリア
+        document.querySelectorAll('.revenue-input').forEach(input => {
+            input.value = '';
+        });
 
         // 勘定科目明細 (金額) をクリア
         document.querySelectorAll('.detail-input').forEach(input => {
@@ -134,10 +137,94 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ---------------------------------------------
+    // --- アコーディオンの連動制御 ---
+    // ---------------------------------------------
+    const l1Toggles = [
+        { btn: document.querySelector('[data-bs-target=".l1-revenue-group"]'), targetClass: '.l1-revenue-group' },
+        { btn: document.querySelector('[data-bs-target=".l1-expense-group"]'), targetClass: '.l1-expense-group' }
+    ];
+
+    l1Toggles.forEach(l1 => {
+        if (!l1.btn) return;
+
+        const iconElementL1 = l1.btn.querySelector('i');
+        const l2Rows = document.querySelectorAll(l1.targetClass);
+
+        l2Rows.forEach(l2Row => {
+            const l2CollapseInstance = bootstrap.Collapse.getOrCreateInstance(l2Row, { toggle: false });
+
+            l2Row.addEventListener('show.bs.collapse', () => {
+                if (iconElementL1) {
+                    iconElementL1.classList.remove('bi-plus-lg');
+                    iconElementL1.classList.add('bi-dash-lg');
+                }
+            });
+
+            l2Row.addEventListener('hide.bs.collapse', () => {
+                const otherL2s = Array.from(l2Rows).filter(el => el !== l2Row && el.classList.contains('show'));
+                if (otherL2s.length === 0 && iconElementL1) {
+                    iconElementL1.classList.remove('bi-dash-lg');
+                    iconElementL1.classList.add('bi-plus-lg');
+                }
+
+                const l2Button = l2Row.querySelector('.toggle-icon');
+                if (l2Button) {
+                    const l3TargetSelector = l2Button.getAttribute('data-bs-target');
+                    if (l3TargetSelector) {
+                        const l3Rows = document.querySelectorAll(l3TargetSelector);
+                        l3Rows.forEach(l3Row => {
+                            const l3CollapseInstance = bootstrap.Collapse.getOrCreateInstance(l3Row, { toggle: false });
+                            if (l3CollapseInstance) {
+                                l3CollapseInstance.hide();
+                            }
+                        });
+
+                        const iconElementL2 = l2Button.querySelector('i');
+                        if (iconElementL2) {
+                            iconElementL2.classList.remove('bi-dash');
+                            iconElementL2.classList.add('bi-plus');
+                        }
+                    }
+                }
+            });
+        });
+    });
+
+    document.querySelectorAll('.toggle-icon:not([data-bs-target^="."])').forEach(function (l2Button) {
+        const iconElementL2 = l2Button.querySelector('i');
+        const l3TargetSelector = l2Button.getAttribute('data-bs-target');
+        if (!l3TargetSelector) return;
+
+        const l3Rows = document.querySelectorAll(l3TargetSelector);
+
+        l3Rows.forEach(l3Row => {
+            const l3CollapseInstance = bootstrap.Collapse.getOrCreateInstance(l3Row, { toggle: false });
+
+            l3Row.addEventListener('show.bs.collapse', () => {
+                if (iconElementL2) {
+                    iconElementL2.classList.remove('bi-plus');
+                    iconElementL2.classList.add('bi-dash');
+                }
+            });
+
+            l3Row.addEventListener('hide.bs.collapse', () => {
+                const otherL3s = Array.from(l3Rows).filter(el => el !== l3Row && el.classList.contains('show'));
+                if (otherL3s.length === 0 && iconElementL2) {
+                    iconElementL2.classList.remove('bi-dash');
+                    iconElementL2.classList.add('bi-plus');
+                }
+            });
+        });
+    });
+    // アコーディオンの連動制御ここまで
+    // ---------------------------------------------
+
+
+    // ---------------------------------------------
     // --- 月/営業所選択時のデータ読み込み処理 ---
     // ---------------------------------------------
-    window.loadResultData = function (year, month, officeId) {
-        if (!year || !month || !officeId) return;
+    window.loadResultData = function (year, month) {
+        if (!year || !month) return;
 
         // データロードの直前に、まずフォームをリセットする
         resetInputFields();
@@ -154,12 +241,11 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (data.error) throw new Error(data.error);
 
-                // 1. 全営業所データをローカル変数にセット
+                // 全営業所データをローカル変数にセット
                 officeTimeDataLocal = data.offices || {};
 
-                // 2. 賃率をDOMに設定（共通賃率の原則）
+                // 賃率をDOMに設定（共通賃率の原則）
                 const commonRate = data.common_hourly_rate ?? 0;
-                // hourlyRateInput.value = commonRate; // renderOfficeToDom で行われる
 
                 // 賃率をローカルデータにも反映させる
                 for (const oid in officeTimeDataLocal) {
@@ -167,21 +253,33 @@ document.addEventListener('DOMContentLoaded', function () {
                     officeTimeDataLocal[oid].hourly_rate = commonRate;
                 }
 
-                // 3. result_id を更新
+                // result_id を更新
                 document.getElementById('resultId').value = data.result_id ?? '';
 
-                // 4. 現在選択されている営業所のデータをDOMに表示 (currentOfficeId を使用)
+                // 現在選択されている営業所のデータをDOMに表示 (currentOfficeId を使用)
                 renderOfficeToDom(currentOfficeId);
 
-                // 5. 各明細の金額
+                // 各明細の金額 (経費)
                 if (data.details) {
                     for (const [detailId, amount] of Object.entries(data.details)) {
                         const input = document.querySelector(`input[data-detail-id="${detailId}"]`);
                         if (input) {
-                            input.value = amount;
+                            // 0は空文字にする
+                            input.value = (amount != 0) ? amount : '';
                         }
                     }
                 }
+
+                // 収入の金額
+                if (data.revenues) {
+                    for (const [itemId, amount] of Object.entries(data.revenues)) {
+                        const input = document.querySelector(`input[data-revenue-item-id="${itemId}"]`);
+                        if (input) {
+                            input.value = (amount != 0) ? amount : '';
+                        }
+                    }
+                }
+
                 // 合計など再計算
                 updateTotals();
 
@@ -198,12 +296,11 @@ document.addEventListener('DOMContentLoaded', function () {
     monthSelect.addEventListener('change', function () {
         const year = yearSelect.value;
         const month = monthSelect.value;
-        const officeId = officeSelect.value;
 
-        if (!year || !month || !officeId) return;
+        if (!year || !month) return;
 
         // loadResultDataを実行
-        window.loadResultData(year, month, officeId);
+        window.loadResultData(year, month);
     });
 
     // ---------------------------------------------
@@ -218,12 +315,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---------------------------------------------
-    // --- 合計再計算（全営業所対応ロジック） ---
+    // --- 合計再計算 ---
     // ---------------------------------------------
     function updateTotals() {
         let totalHours = 0;
         let totalLaborCost = 0;
-        const hourlyRate = hourlyRateInput ? (parseFloat(hourlyRateInput.value) || 0) : 0;
+        const hourlyRate = (hourlyRateInput ? parseFloat(hourlyRateInput.value) : 0) || 0;
 
         if (currentOfficeId) {
             captureCurrentOfficeTime(currentOfficeId);
@@ -232,33 +329,34 @@ document.addEventListener('DOMContentLoaded', function () {
         for (const officeId in officeTimeDataLocal) {
             if (officeTimeDataLocal.hasOwnProperty(officeId)) {
                 const data = officeTimeDataLocal[officeId];
-                if (data && (data.standard_hours || data.overtime_hours || data.transferred_hours)) {
-                    const standard = parseFloat(data.standard_hours) || 0;
-                    const overtime = parseFloat(data.overtime_hours) || 0;
-                    const transferred = parseFloat(data.transferred_hours) || 0;
-                    totalHours += (standard + overtime + transferred);
+                if (data) {
+                    totalHours += (parseFloat(data.standard_hours) || 0) + (parseFloat(data.overtime_hours) || 0) + (parseFloat(data.transferred_hours) || 0);
                 }
             }
         }
-
         totalLaborCost = Math.round(totalHours * hourlyRate);
 
-        document.getElementById('totalHours').textContent = totalHours.toFixed(2) + ' 時間';
-        document.getElementById('laborCost').textContent = totalLaborCost.toLocaleString();
+        if (document.getElementById('info-labor-cost')) {
+            document.getElementById('info-labor-cost').textContent = totalLaborCost.toLocaleString();
+        }
 
+        // --- 経費合計 ---
         let expenseTotal = 0;
         const accountTotals = {};
-
         document.querySelectorAll('.detail-input').forEach(input => {
             const val = parseFloat(input.value) || 0;
             const accountId = input.dataset.accountId;
             expenseTotal += val;
-            if (!accountTotals[accountId]) {
-                accountTotals[accountId] = 0;
-            }
+            if (!accountTotals[accountId]) accountTotals[accountId] = 0;
             accountTotals[accountId] += val;
         });
 
+        if (document.getElementById('total-expense')) {
+            document.getElementById('total-expense').textContent = expenseTotal.toLocaleString();
+        }
+        if (document.getElementById('info-expense-total')) {
+            document.getElementById('info-expense-total').textContent = expenseTotal.toLocaleString();
+        }
         for (const [accountId, sum] of Object.entries(accountTotals)) {
             const target = document.getElementById(`total-account-${accountId}`);
             if (target) {
@@ -268,21 +366,106 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        const grandTotal = expenseTotal + totalLaborCost;
-        document.getElementById('expenseTotal').textContent = expenseTotal.toLocaleString();
-        document.getElementById('grandTotal').textContent = grandTotal.toLocaleString();
+        // --- 収入合計 ---
+        let revenueTotal = 0;
+        const revenueCategoryTotals = {};
+        document.querySelectorAll('.revenue-input').forEach(input => {
+            const val = parseFloat(input.value) || 0;
+            const categoryId = input.dataset.categoryId;
+            revenueTotal += val;
+            if (!revenueCategoryTotals[categoryId]) revenueCategoryTotals[categoryId] = 0;
+            revenueCategoryTotals[categoryId] += val;
+        });
+
+        if (document.getElementById('total-revenue')) {
+            document.getElementById('total-revenue').textContent = revenueTotal.toLocaleString();
+        }
+        if (document.getElementById('info-revenue-total')) {
+            document.getElementById('info-revenue-total').textContent = revenueTotal.toLocaleString();
+        }
+        for (const [categoryId, sum] of Object.entries(revenueCategoryTotals)) {
+            const target = document.getElementById(`total-revenue-category-${categoryId}`);
+            if (target) {
+                target.textContent = sum.toLocaleString();
+            }
+        }
+
+        // --- 差引収益 (収入 - 経費) ---
+        const grossProfit = revenueTotal - expenseTotal;
+        if (document.getElementById('info-gross-profit')) {
+            document.getElementById('info-gross-profit').textContent = grossProfit.toLocaleString();
+        }
     }
+    // (★ 合計処理ここまで)
 
     // ---------------------------------------------
     // --- 入力変更時の更新処理 ---
     // ---------------------------------------------
-    document.querySelectorAll('.detail-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')
+    document.querySelectorAll('.detail-input, .revenue-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')
         .forEach(input => {
-            input.addEventListener('input', function () {
-                captureCurrentOfficeTime(currentOfficeId);
-                updateTotals(); // リアルタイム計算
-            });
+            if (input) {
+                input.addEventListener('input', function () {
+                    if (input === hourlyRateInput) {
+                        const v = hourlyRateInput.value;
+                        const rate = (v === '' ? '' : parseFloat(v));
+                        for (const oid in officeTimeDataLocal) {
+                            if (!officeTimeDataLocal[oid]) officeTimeDataLocal[oid] = {};
+                            officeTimeDataLocal[oid].hourly_rate = rate;
+                        }
+                    }
+                    captureCurrentOfficeTime(currentOfficeId);
+                    updateTotals(); // リアルタイム計算
+                });
+            }
         });
+
+    // ---------------------------------------------
+    // --- URLクリーンアップ ---
+    // ---------------------------------------------
+    const cleanUrl = function () {
+        if (window.history.replaceState) {
+            const url = new URL(window.location.href);
+            let shouldReplace = false;
+
+            if (url.searchParams.has('error') || url.searchParams.has('success') || url.searchParams.has('year') || url.searchParams.has('month') || url.searchParams.has('msg')) {
+                url.searchParams.delete('error');
+                url.searchParams.delete('success');
+                url.searchParams.delete('year');
+                url.searchParams.delete('month');
+                url.searchParams.delete('msg');
+                shouldReplace = true;
+            }
+
+            if (shouldReplace) {
+                window.history.replaceState({}, document.title, url.pathname);
+            }
+        }
+    };
+
+    // ページロード時（リダイレクト後）に実行
+    cleanUrl();
+
+    // アラートの「×」ボタンクリック時の動作
+    document.querySelectorAll('.alert .btn-close').forEach(btn => {
+        btn.addEventListener('click', () => {
+            // 1. URLをクリーンにする
+            cleanUrl();
+
+            // 2. フォームの入力値をリセットする
+            resetInputFields();
+
+            // 3. 年月選択をリセットする
+            if (yearSelect) {
+                yearSelect.value = '';
+            }
+            if (monthSelect) {
+                monthSelect.innerHTML = '<option value="" disabled selected>月を選択</option>';
+                monthSelect.disabled = true;
+            }
+        });
+    });
+    // (URLクリーンアップここまで)
+    // ---------------------------------------------
 
     // ---------------------------------------------
     // --- 初期表示処理 ---
@@ -290,10 +473,21 @@ document.addEventListener('DOMContentLoaded', function () {
     const urlParams = new URLSearchParams(window.location.search);
     const initialMonth = urlParams.get('month');
 
-    if (urlParams.get('year') && initialMonth) {
+    if (urlParams.get('year') && initialMonth && yearSelect && monthSelect) {
         yearSelect.value = urlParams.get('year');
-        monthSelect.value = initialMonth;
-        monthSelect.dispatchEvent(new Event('change'));
+
+        if (yearSelect.dispatchEvent) {
+            // yearSelect の 'change' を発火させて、monthSelect を更新
+            yearSelect.dispatchEvent(new Event('change'));
+        }
+
+        setTimeout(() => {
+            monthSelect.value = initialMonth;
+            if (monthSelect.dispatchEvent) {
+                // monthSelect の 'change' を発火させて、データをロード
+                monthSelect.dispatchEvent(new Event('change'));
+            }
+        }, 100); // yearSelect の change 処理 (head.js) が完了するのを待つ
 
     } else {
         renderOfficeToDom(currentOfficeId);

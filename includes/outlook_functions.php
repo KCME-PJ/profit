@@ -16,6 +16,8 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
     $outlook_id = $data['outlook_id'];
     $officeTimeData = $data['officeTimeData'] ?? [];
     $amounts = $data['amounts'] ?? [];
+    $revenues = $data['revenues'] ?? [];
+    $hourly_rate = (float)($data['hourly_rate'] ?? 0);
 
     // 確定ステータスのチェック (Fixedデータは修正不可)
     $stmtStatusCheck = $dbh->prepare("SELECT status FROM monthly_outlook WHERE id = ?");
@@ -36,11 +38,8 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
             throw new Exception("対象の月末見込みデータが見つかりません。");
         }
 
-        $firstOfficeData = reset($officeTimeData);
-        $hourly_rate = (float)($firstOfficeData['hourly_rate'] ?? $currentRate ?? 0);
-
         $stmtParent = $dbh->prepare("UPDATE monthly_outlook SET hourly_rate = ?, updated_at = NOW() WHERE id = ?");
-        $stmtParent->execute([$hourly_rate, $outlook_id]);
+        $stmtParent->execute([$hourly_rate, $outlook_id]); // ★ $data からの $hourly_rate を使用
 
         // 2. 営業所別時間データ (monthly_outlook_time) の更新/追加
         $stmtCheckTime = $dbh->prepare("
@@ -50,15 +49,20 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
         $stmtUpdateTime = $dbh->prepare("
             UPDATE monthly_outlook_time SET
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
-                fulltime_count = ?, contract_count = ?, dispatch_count = ?
+                fulltime_count = ?, contract_count = ?, dispatch_count = ?, updated_at = NOW()
             WHERE id = ?
-        "); // updated_at は削除済み (正しい)
-
+        ");
         $stmtInsertTime = $dbh->prepare("
             INSERT INTO monthly_outlook_time
             (monthly_outlook_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
+        // DELETE文
+        $stmtDeleteTime = $dbh->prepare("
+            DELETE FROM monthly_outlook_time
+            WHERE monthly_outlook_id = ? AND office_id = ?
+        ");
+
 
         foreach ($officeTimeData as $office_id => $time) {
             $office_id = (int)$office_id;
@@ -74,12 +78,21 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
             $stmtCheckTime->execute([$outlook_id, $office_id]);
             $existingId = $stmtCheckTime->fetchColumn();
 
-            if ($existingId) {
-                $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+            // 0件の場合削除
+            if ($standard == 0 && $overtime == 0 && $transfer == 0 && $full == 0 && $contract == 0 && $dispatch == 0) {
+                if ($existingId) {
+                    $stmtDeleteTime->execute([$outlook_id, $office_id]);
+                }
             } else {
-                $stmtInsertTime->execute([$outlook_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                if ($existingId) {
+                    $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+                } else {
+                    $stmtInsertTime->execute([$outlook_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                }
             }
         }
+        // 営業所別時間データの修正ここまで
+
 
         // ----------------------------
         // 3. 勘定科目明細 (monthly_outlook_details) の更新/追加
@@ -94,13 +107,13 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
             UPDATE monthly_outlook_details
             SET amount = ?
             WHERE id = ?
-        "); // updated_at は削除済み (正しい)
+        ");
 
         $stmtInsertDetail = $dbh->prepare("
             INSERT INTO monthly_outlook_details (outlook_id, detail_id, amount)
             VALUES (?, ?, ?)
         ");
-        // ★ 追加: DELETE文
+        // DELETE文
         $stmtDeleteDetail = $dbh->prepare("
             DELETE FROM monthly_outlook_details
             WHERE outlook_id = ? AND detail_id = ?
@@ -109,14 +122,13 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
         // フォームから送られたデータのみを処理
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
-                // ★ 修正: 空文字やnullは 0.0 としてキャスト
-                $amountValue = (float)($amount ?? 0);
+                // 空文字やnullは 0.0 としてキャスト
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
                 $detail_id = (int)$detail_id;
 
                 $stmtCheckDetail->execute([$detail_parent_id, $detail_id]);
                 $existingId = $stmtCheckDetail->fetchColumn();
 
-                // ★ 修正: $amount > 0 を $amountValue != 0 に変更
                 if ($amountValue != 0) {
                     // (プラスまたはマイナスの金額)
                     if ($existingId) {
@@ -125,11 +137,53 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
                         $stmtInsertDetail->execute([$detail_parent_id, $detail_id, $amountValue]);
                     }
                 } elseif ($existingId) {
-                    // ★ 追加: 金額が 0 の場合のみ、既存のレコードを削除
+                    // 金額が 0 の場合のみ、既存のレコードを削除
                     $stmtDeleteDetail->execute([$detail_parent_id, $detail_id]);
                 }
             }
         }
+
+        // ----------------------------
+        // 4. 収入明細 (monthly_outlook_revenues) の更新/追加
+        // ----------------------------
+        $stmtCheckRev = $dbh->prepare("
+            SELECT id FROM monthly_outlook_revenues 
+            WHERE outlook_id = ? AND revenue_item_id = ?
+        ");
+        $stmtUpdateRev = $dbh->prepare("
+            UPDATE monthly_outlook_revenues SET amount = ? WHERE id = ?
+        ");
+        $stmtInsertRev = $dbh->prepare("
+            INSERT INTO monthly_outlook_revenues (outlook_id, revenue_item_id, amount)
+            VALUES (?, ?, ?)
+        ");
+        $stmtDeleteRev = $dbh->prepare("
+            DELETE FROM monthly_outlook_revenues
+            WHERE outlook_id = ? AND revenue_item_id = ?
+        ");
+
+        if (!empty($revenues)) {
+            foreach ($revenues as $revenue_item_id => $amount) {
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
+                $revenue_item_id = (int)$revenue_item_id;
+
+                $stmtCheckRev->execute([$outlook_id, $revenue_item_id]);
+                $existingId = $stmtCheckRev->fetchColumn();
+
+                if ($amountValue != 0) { // マイナス対応
+                    if ($existingId) {
+                        $stmtUpdateRev->execute([$amountValue, $existingId]);
+                    } else {
+                        $stmtInsertRev->execute([$outlook_id, $revenue_item_id, $amountValue]);
+                    }
+                } elseif ($existingId) {
+                    // 金額が 0 (または空) の場合は削除
+                    $stmtDeleteRev->execute([$outlook_id, $revenue_item_id]);
+                }
+            }
+        }
+        // 収入明細の追加ここまで
+
     } catch (Exception $e) {
         throw new Exception("月末見込みの更新中にエラーが発生しました: " . $e->getMessage());
     }
@@ -137,7 +191,6 @@ function updateMonthlyOutlook(array $data, PDO $dbh)
 
 /**
  * 月末見込み確定処理（ステータス変更＆次の工程(Result)へデータ反映）
- * (変更なし)
  */
 function confirmMonthlyOutlook(array $data, PDO $dbh)
 {
@@ -163,7 +216,6 @@ function confirmMonthlyOutlook(array $data, PDO $dbh)
 
 /**
  * 月末見込みデータから概算実績(Result)テーブルへデータを反映する処理
- * (変更なし)
  */
 function reflectToResult(int $outlook_id, PDO $dbh)
 {
@@ -221,6 +273,17 @@ function reflectToResult(int $outlook_id, PDO $dbh)
             WHERE outlook_id = ?
         ");
         $stmtCopyDetails->execute([$resultId, $outlook_id]);
+
+        // 4. monthly_result_revenues (収入明細) への処理
+        $stmtCopyRevenues = $dbh->prepare("
+            INSERT INTO monthly_result_revenues (result_id, revenue_item_id, amount)
+            SELECT ?, revenue_item_id, amount
+            FROM monthly_outlook_revenues
+            WHERE outlook_id = ?
+        ");
+        $stmtCopyRevenues->execute([$resultId, $outlook_id]);
+        // 収入コピーの追加ここまで
+
     } catch (Exception $e) {
         throw new Exception("概算実績(Result)への反映中にエラーが発生しました: " . $e->getMessage());
     }

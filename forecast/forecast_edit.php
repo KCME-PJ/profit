@@ -1,6 +1,6 @@
 <?php
 require_once '../includes/database.php';
-require_once '../includes/forecast_ui_functions.php';
+require_once '../includes/forecast_ui_functions.php'; // (forecast用の関数を読み込み)
 
 // データベース接続
 $dbh = getDb();
@@ -27,6 +27,35 @@ try {
         });
     }
     unset($months); // 参照解除
+
+    // ★ 1. 収入カテゴリと収入項目を取得
+    // --------------------------------------------------------
+    $revenueQuery = "SELECT c.id AS category_id, c.name AS category_name, i.id AS item_id, i.name AS item_name, i.note AS item_note
+                      FROM revenue_categories c
+                      LEFT JOIN revenue_items i ON c.id = i.revenue_category_id
+                      ORDER BY c.sort_order ASC, c.id ASC, i.id ASC";
+    $revenueStmt = $dbh->prepare($revenueQuery);
+    $revenueStmt->execute();
+    $revenueDetails = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $revenues = [];
+    foreach ($revenueDetails as $row) {
+        $categoryId = $row['category_id'];
+        if (!isset($revenues[$categoryId])) {
+            $revenues[$categoryId] = [
+                'name' => $row['category_name'],
+                'items' => []
+            ];
+        }
+        if (!is_null($row['item_id'])) {
+            $revenues[$categoryId]['items'][] = [
+                'id' => $row['item_id'],
+                'name' => $row['item_name'],
+                'note' => $row['item_note']
+            ];
+        }
+    }
+    // --------------------------------------------------------
 
     // 勘定科目、詳細情報の取得
     $accountsQuery = "SELECT a.id AS account_id, a.name AS account_name, d.id AS detail_id, d.name AS detail_name, d.note AS detail_note
@@ -57,6 +86,7 @@ try {
 } catch (Exception $e) {
     // エラーハンドリング
     $accounts = [];
+    $revenues = []; // ★ $revenues も catch に追加
 }
 
 // 営業所リスト
@@ -86,7 +116,12 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="../index.html">採算表</a>
-            <div class="collapse navbar-collapse">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
@@ -137,10 +172,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -168,19 +199,21 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
-        <?php if (isset($_GET['success']) && $_GET['success'] === '1'):
+        <?php if (isset($_GET['success'])):
             $sy = isset($_GET['year']) ? (int)$_GET['year'] : null;
             $sm = isset($_GET['month']) ? (int)$_GET['month'] : null;
+            $msg = isset($_GET['msg']) ? htmlspecialchars($_GET['msg']) : '登録が完了しました。';
         ?>
             <div id="successAlert" class="alert alert-success alert-dismissible fade show" role="alert">
                 <?php if ($sy && $sm): ?>
-                    <?= htmlspecialchars("{$sy}年度 {$sm}月 を登録しました。") ?>
+                    <?= htmlspecialchars("{$sy}年度 {$sm}月") ?> の<?= $msg ?>
                 <?php else: ?>
-                    登録が完了しました。
+                    <?= $msg ?>
                 <?php endif; ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
+
         <form id="mainForm" action="forecast_update.php" method="POST">
             <div class="row mb-3">
                 <div class="col-md-2">
@@ -212,13 +245,11 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
 
-            <!-- 上部の入力フォーム -->
             <div class="info-box">
                 <div class="row align-items-end mb-2">
                     <?php
                     $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
                     ?>
-                    <!-- 年度と月の選択 -->
                     <div class="col-md-2">
                         <label>年度</label>
                         <select id="yearSelect" name="year" class="form-select form-select-sm">
@@ -246,13 +277,14 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <?php endforeach; ?>
                         </select>
                     </div>
+
                     <div class="col-md-3">
-                        <strong>総時間：</strong><span id="totalHours">0.00 時間</span><br>
-                        <strong>労務費：</strong>¥<span id="laborCost">0</span>
+                        <strong>収入合計：</strong>¥<span id="info-revenue-total">0</span><br>
+                        <strong>労務費：</strong>¥<span id="info-labor-cost">0</span>
                     </div>
                     <div class="col-md-3">
-                        <strong>経費合計：</strong>¥<span id="expenseTotal">0</span><br>
-                        <strong>総合計：</strong>¥<span id="grandTotal">0</span>
+                        <strong>経費合計：</strong>¥<span id="info-expense-total">0</span><br>
+                        <strong>差引収益：</strong>¥<span id="info-gross-profit">0</span>
                     </div>
                 </div>
                 <div class="row align-items-end mb-2">
@@ -295,56 +327,102 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
                 <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
             </div>
+
             <div class="table-container">
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
-                            <!-- 1列目: 勘定科目 -->
-                            <th>勘定科目</th>
-                            <!-- 2列目: 詳細 (展開行用) -->
+                            <th>項目</th>
                             <th style="width: 30%;">詳細</th>
-                            <!-- 3列目: 備考 (展開行用) -->
                             <th style="width: 30%;">備考</th>
-                            <!-- 4列目: 金額 (見通し) -->
                             <th style="width: 150px;">金額（見通し）</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- 勘定科目（親） -->
-                        <?php foreach ($accounts as $accountId => $account): ?>
-                            <tr>
-                                <!-- 1列目: 勘定科目名 -->
-                                <td>
+                        <tr class="table-light">
+                            <td>
+                                <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
+                                    data-bs-target=".l1-revenue-group" aria-expanded="false">
+                                    <i class="bi bi-plus-lg icon-small"></i>
+                                </button>
+                                <strong class="ms-2">収入の部</strong>
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td class="text-end fw-bold" id="total-revenue">0</td>
+                        </tr>
+                        <?php foreach ($revenues as $categoryId => $category): ?>
+                            <tr class="collapse l1-revenue-group">
+                                <td class="ps-4">
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
-                                        data-bs-target="#child-<?= $accountId ?>" aria-expanded="true">
+                                        data-bs-target="#child-rev-<?= $categoryId ?>" aria-expanded="false">
+                                        <i class="bi bi-plus icon-small"></i>
+                                    </button>
+                                    <?= htmlspecialchars($category['name']) ?>
+                                </td>
+                                <td></td>
+                                <td></td>
+                                <td class="text-end fw-bold" id="total-revenue-category-<?= $categoryId ?>">0</td>
+                            </tr>
+                            <?php foreach ($category['items'] as $item): ?>
+                                <tr class="collapse" id="child-rev-<?= $categoryId ?>">
+                                    <td></td>
+                                    <td class="ps-5">
+                                        <?= htmlspecialchars($item['name']) ?>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted"><?= htmlspecialchars($item['note']) ?></small>
+                                    </td>
+                                    <td class="details-cell">
+                                        <input type="number" step="1"
+                                            class="form-control form-control-sm text-end input-value revenue-input"
+                                            data-category-id="<?= $categoryId ?>"
+                                            data-revenue-item-id="<?= $item['id'] ?>"
+                                            name="revenues[<?= $item['id'] ?>]"
+                                            placeholder="0">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endforeach; ?>
+
+                        <tr class="table-light">
+                            <td>
+                                <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
+                                    data-bs-target=".l1-expense-group" aria-expanded="false">
+                                    <i class="bi bi-plus-lg icon-small"></i>
+                                </button>
+                                <strong class="ms-2">経費の部</strong>
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td class="text-end fw-bold" id="total-expense">0</td>
+                        </tr>
+
+                        <?php foreach ($accounts as $accountId => $account): ?>
+                            <tr class="collapse l1-expense-group">
+                                <td class="ps-4">
+                                    <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
+                                        data-bs-target="#child-<?= $accountId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
-                                <!-- 2列目 (詳細): 親行は空 -->
                                 <td></td>
-                                <!-- 3列目 (備考): 親行は空 -->
                                 <td></td>
-                                <!-- 4列目: 合計金額 -->
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0
                                     <input type="hidden" name="total_account[<?= $accountId ?>]" value="0">
                                 </td>
                             </tr>
 
-                            <!-- 詳細（子） -->
                             <?php foreach ($account['details'] as $detail): ?>
                                 <tr class="collapse" id="child-<?= $accountId ?>">
-                                    <!-- 1列目: (空) -->
                                     <td></td>
-                                    <!-- 2列目: 詳細名 (インデント) -->
-                                    <td class="ps-4">
+                                    <td class="ps-5">
                                         <?= htmlspecialchars($detail['name']) ?>
                                     </td>
-                                    <!-- 3列目: 備考 -->
                                     <td>
                                         <?= htmlspecialchars($detail['note']) ?>
                                     </td>
-                                    <!-- 4列目: 金額入力 -->
                                     <td class="details-cell">
                                         <input type="hidden" name="detail_ids[]" value="<?= $detail['id'] ?>">
                                         <input type="number" step="1"
@@ -362,10 +440,9 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </table>
             </div>
 
-            <!-- 処理モード用の hidden input -->
             <input type="hidden" name="action_type" id="forecastMode" value="update">
         </form>
-        <!-- 修正モーダル -->
+
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -383,7 +460,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
         </div>
-        <!-- 確定モーダル -->
         <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -404,74 +480,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // ----- URL パラメータのクリーンアップ処理 -----
-            const cleanUrl = function() {
-                if (window.history.replaceState) {
-                    const url = new URL(window.location.href);
-                    let shouldReplace = false;
-
-                    if (url.searchParams.has('error')) {
-                        url.searchParams.delete('error');
-                        shouldReplace = true;
-                    }
-                    if (url.searchParams.has('success')) {
-                        url.searchParams.delete('success');
-                        shouldReplace = true;
-                    }
-                    if (url.searchParams.has('year')) {
-                        url.searchParams.delete('year');
-                        shouldReplace = true;
-                    }
-                    if (url.searchParams.has('month')) {
-                        url.searchParams.delete('month');
-                        shouldReplace = true;
-                    }
-
-                    if (shouldReplace) {
-                        window.history.replaceState({}, document.title, url.pathname);
-
-                        const yearSelect = document.getElementById('yearSelect');
-                        const monthSelect = document.getElementById('monthSelect');
-
-                        if (yearSelect) {
-                            yearSelect.value = ''; // 年度をリセット
-                            if (monthSelect) {
-                                monthSelect.innerHTML = '<option value="" disabled selected>月を選択</option>';
-                                monthSelect.disabled = true;
-                            }
-                        }
-                    }
-                }
-            };
-            cleanUrl();
-
-            const successAlert = document.getElementById('successAlert');
-            const errorAlert = document.getElementById('errorAlert');
-
-            if (successAlert) {
-                successAlert.addEventListener('closed.bs.alert', cleanUrl);
-            }
-            if (errorAlert) {
-                errorAlert.addEventListener('closed.bs.alert', cleanUrl);
-            }
-
-            // アイコンの切り替え
-            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
-                icon.addEventListener('click', function() {
-                    const iconElement = icon.querySelector('i');
-                    if (iconElement.classList.contains('bi-plus') || iconElement.classList.contains('bi-plus-lg')) {
-                        iconElement.classList.remove('bi-plus', 'bi-plus-lg');
-                        iconElement.classList.add('bi-dash');
-                    } else if (iconElement.classList.contains('bi-dash') || iconElement.classList.contains('bi-dash-lg')) {
-                        iconElement.classList.remove('bi-dash', 'bi-dash-lg');
-                        iconElement.classList.add('bi-plus');
-                    }
-                });
-            });
-        });
-    </script>
     <script src="../js/forecast_edit_body.js"></script>
 </body>
 

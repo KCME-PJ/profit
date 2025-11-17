@@ -34,7 +34,9 @@ try {
             'monthly_cp_id' => $monthly_cp_id,
             'officeTimeData' => $officeTimeData,
             'detail_ids' => $detailData['detail_ids'],
-            'amounts' => $detailData['amounts']
+            'amounts' => $detailData['amounts'],
+            'hourly_rate' => $_POST['hourly_rate'] ?? 0, // ★ 修正: 追加
+            'revenues' => $_POST['revenues'] ?? []      // ★ 修正: 追加
         ];
         updateMonthlyCp($dataForUpdate, $dbh);
         $message = "CPの更新が完了しました！";
@@ -44,7 +46,9 @@ try {
             'monthly_cp_id' => $monthly_cp_id,
             'officeTimeData' => $officeTimeData,
             'detail_ids' => $detailData['detail_ids'],
-            'amounts' => $detailData['amounts']
+            'amounts' => $detailData['amounts'],
+            'hourly_rate' => $_POST['hourly_rate'] ?? 0, // ★ 修正: 追加
+            'revenues' => $_POST['revenues'] ?? []      // ★ 修正: 追加
         ];
         confirmMonthlyCp($dataForFix, $dbh);
         $message = "CPの確定が完了しました！";

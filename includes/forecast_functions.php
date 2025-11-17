@@ -11,12 +11,13 @@ require_once '../includes/database.php';
 function updateMonthlyForecast(array $data, PDO $dbh)
 {
     if (empty($data['monthly_forecast_id'])) {
-        // IDがない場合は新規登録と見なすロジック
-        throw new Exception("monthly_forecast_id がありません。データが存在しない場合は、月選択時に自動で登録されます。");
+        throw new Exception("monthly_forecast_id がありません。");
     }
     $monthly_forecast_id = $data['monthly_forecast_id'];
     $officeTimeData = $data['officeTimeData'] ?? [];
     $amounts = $data['amounts'] ?? [];
+    $revenues = $data['revenues'] ?? [];
+    $hourly_rate = (float)($data['hourly_rate'] ?? 0);
 
     // ----------------------------
     // 確定ステータスのチェック
@@ -32,20 +33,8 @@ function updateMonthlyForecast(array $data, PDO $dbh)
 
     try {
         // ----------------------------
-        // 1. 親テーブル (monthly_forecast) の更新
-        //    - 共通賃率の更新
+        // 1. 親テーブル (monthly_forecast) の更新 (共通賃率)
         // ----------------------------
-        $stmtHourlyRate = $dbh->prepare("SELECT hourly_rate FROM monthly_forecast WHERE id = ?");
-        $stmtHourlyRate->execute([$monthly_forecast_id]);
-        $currentRate = $stmtHourlyRate->fetchColumn();
-
-        if ($currentRate === false) {
-            throw new Exception("対象の見通しデータが見つかりません。");
-        }
-
-        $firstOfficeData = reset($officeTimeData);
-        $hourly_rate = (float)($firstOfficeData['hourly_rate'] ?? $currentRate ?? 0);
-
         $stmtParent = $dbh->prepare("UPDATE monthly_forecast SET hourly_rate = ?, updated_at = NOW() WHERE id = ?");
         $stmtParent->execute([$hourly_rate, $monthly_forecast_id]);
 
@@ -56,6 +45,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
             SELECT id FROM monthly_forecast_time 
             WHERE monthly_forecast_id = ? AND office_id = ?
         ");
+
         $stmtUpdateTime = $dbh->prepare("
             UPDATE monthly_forecast_time SET
                 standard_hours = ?, overtime_hours = ?, transferred_hours = ?, 
@@ -66,6 +56,10 @@ function updateMonthlyForecast(array $data, PDO $dbh)
             INSERT INTO monthly_forecast_time
             (monthly_forecast_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtDeleteTime = $dbh->prepare("
+            DELETE FROM monthly_forecast_time
+            WHERE monthly_forecast_id = ? AND office_id = ?
         ");
 
         foreach ($officeTimeData as $office_id => $time) {
@@ -82,15 +76,22 @@ function updateMonthlyForecast(array $data, PDO $dbh)
             $stmtCheckTime->execute([$monthly_forecast_id, $office_id]);
             $existingId = $stmtCheckTime->fetchColumn();
 
-            if ($existingId) {
-                $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+            // 0件の場合削除
+            if ($standard == 0 && $overtime == 0 && $transfer == 0 && $full == 0 && $contract == 0 && $dispatch == 0) {
+                if ($existingId) {
+                    $stmtDeleteTime->execute([$monthly_forecast_id, $office_id]);
+                }
             } else {
-                $stmtInsertTime->execute([$monthly_forecast_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                if ($existingId) {
+                    $stmtUpdateTime->execute([$standard, $overtime, $transfer, $full, $contract, $dispatch, $existingId]);
+                } else {
+                    $stmtInsertTime->execute([$monthly_forecast_id, $office_id, $standard, $overtime, $transfer, $full, $contract, $dispatch]);
+                }
             }
         }
 
         // ----------------------------
-        // 3. 勘定科目明細 (monthly_forecast_details) の更新/追加
+        // 3. 勘定科目明細 (経費) の更新/追加
         // ----------------------------
         $forecast_id = $monthly_forecast_id;
 
@@ -98,6 +99,7 @@ function updateMonthlyForecast(array $data, PDO $dbh)
             SELECT id FROM monthly_forecast_details 
             WHERE forecast_id = ? AND detail_id = ?
         ");
+
         $stmtUpdateDetail = $dbh->prepare("
             UPDATE monthly_forecast_details
             SET amount = ?
@@ -114,26 +116,62 @@ function updateMonthlyForecast(array $data, PDO $dbh)
 
         if (!empty($amounts)) {
             foreach ($amounts as $detail_id => $amount) {
-                // 空文字やnullは 0.0 としてキャスト
-                $amountValue = (float)($amount ?? 0);
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
                 $detail_id = (int)$detail_id;
 
                 $stmtCheckDetail->execute([$forecast_id, $detail_id]);
                 $existingId = $stmtCheckDetail->fetchColumn();
 
-                // $amount > 0 を $amountValue != 0 に変更
                 if ($amountValue != 0) {
-                    // (プラスまたはマイナスの金額)
                     if ($existingId) {
-                        // 更新
                         $stmtUpdateDetail->execute([$amountValue, $existingId]);
                     } else {
-                        // 新規挿入
                         $stmtInsertDetail->execute([$forecast_id, $detail_id, $amountValue]);
                     }
                 } elseif ($existingId) {
                     // 金額が 0 の場合のみ、既存のレコードを削除
                     $stmtDeleteDetail->execute([$forecast_id, $detail_id]);
+                }
+            }
+        }
+
+
+        // ----------------------------
+        // 4. 収入明細 (monthly_forecast_revenues) の更新/追加
+        // ----------------------------
+        $stmtCheckRev = $dbh->prepare("
+            SELECT id FROM monthly_forecast_revenues 
+            WHERE forecast_id = ? AND revenue_item_id = ?
+        ");
+        $stmtUpdateRev = $dbh->prepare("
+            UPDATE monthly_forecast_revenues SET amount = ? WHERE id = ?
+        ");
+        $stmtInsertRev = $dbh->prepare("
+            INSERT INTO monthly_forecast_revenues (forecast_id, revenue_item_id, amount)
+            VALUES (?, ?, ?)
+        ");
+        $stmtDeleteRev = $dbh->prepare("
+            DELETE FROM monthly_forecast_revenues
+            WHERE forecast_id = ? AND revenue_item_id = ?
+        ");
+
+        if (!empty($revenues)) {
+            foreach ($revenues as $revenue_item_id => $amount) {
+                $amountValue = (float)($amount === "" || $amount === null ? 0 : $amount);
+                $revenue_item_id = (int)$revenue_item_id;
+
+                $stmtCheckRev->execute([$forecast_id, $revenue_item_id]);
+                $existingId = $stmtCheckRev->fetchColumn();
+
+                if ($amountValue != 0) { // マイナス対応
+                    if ($existingId) {
+                        $stmtUpdateRev->execute([$amountValue, $existingId]);
+                    } else {
+                        $stmtInsertRev->execute([$forecast_id, $revenue_item_id, $amountValue]);
+                    }
+                } elseif ($existingId) {
+                    // 金額が 0 (または空) の場合は削除
+                    $stmtDeleteRev->execute([$forecast_id, $revenue_item_id]);
                 }
             }
         }
@@ -151,16 +189,10 @@ function confirmMonthlyForecast(array $data, PDO $dbh)
     if (!$monthly_forecast_id) {
         throw new Exception("monthly_forecast_id が存在しません。");
     }
-
-    // 1. まず更新処理を実行し、最新のデータを DB に保存（ここで status='fixed'チェックも実行される）
     updateMonthlyForecast($data, $dbh);
-
     try {
-        // 2. ステータスを 'fixed' に更新
         $stmt = $dbh->prepare("UPDATE monthly_forecast SET status = 'fixed' WHERE id = ?");
         $stmt->execute([$monthly_forecast_id]);
-
-        // 3. 次の工程(Plan)へデータを反映
         reflectToPlan($monthly_forecast_id, $dbh);
     } catch (Exception $e) {
         throw new Exception("見通しの確定中にエラーが発生しました: " . $e->getMessage());
@@ -172,7 +204,6 @@ function confirmMonthlyForecast(array $data, PDO $dbh)
  */
 function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
 {
-    // 1. 参照元の年/月/賃率情報を取得
     $stmt = $dbh->prepare("SELECT year, month, hourly_rate FROM monthly_forecast WHERE id = ?");
     $stmt->execute([$monthly_forecast_id]);
     $forecastInfo = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -180,33 +211,26 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
     if (!$forecastInfo) {
         throw new Exception("参照元の見通しデータが見つかりません。");
     }
-
     $year = $forecastInfo['year'];
     $month = $forecastInfo['month'];
     $hourly_rate = $forecastInfo['hourly_rate'];
 
     try {
-        // 1. monthly_plan (親テーブル) への処理
         $planId = getMonthlyPlanId($year, $month, $dbh);
-
         if ($planId) {
             $dbh->prepare("DELETE FROM monthly_plan WHERE id = ?")->execute([$planId]);
             $planId = null;
         }
-
-        // 新規 Plan レコードの挿入
         $stmt = $dbh->prepare("
             INSERT INTO monthly_plan (year, month, hourly_rate, status)
             VALUES (?, ?, ?, 'draft')
         ");
         $stmt->execute([$year, $month, $hourly_rate]);
         $planId = $dbh->lastInsertId();
-
         if (!$planId) {
             throw new Exception("予定(Plan)の親レコードの挿入に失敗しました。");
         }
 
-        // 2. monthly_plan_time (営業所別データ) への処理
         $stmtCopyTime = $dbh->prepare("
             INSERT INTO monthly_plan_time 
             (monthly_plan_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
@@ -217,7 +241,6 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
         ");
         $stmtCopyTime->execute([$planId, $monthly_forecast_id]);
 
-        // 3. monthly_plan_details (経費明細) への処理
         $stmtCopyDetails = $dbh->prepare("
             INSERT INTO monthly_plan_details (plan_id, detail_id, amount)
             SELECT ?, detail_id, amount
@@ -225,6 +248,14 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
             WHERE forecast_id = ?
         ");
         $stmtCopyDetails->execute([$planId, $monthly_forecast_id]);
+
+        $stmtCopyRevenues = $dbh->prepare("
+            INSERT INTO monthly_plan_revenues (plan_id, revenue_item_id, amount)
+            SELECT ?, revenue_item_id, amount
+            FROM monthly_forecast_revenues
+            WHERE forecast_id = ?
+        ");
+        $stmtCopyRevenues->execute([$planId, $monthly_forecast_id]);
     } catch (Exception $e) {
         throw new Exception("予定(Plan)への反映中にエラーが発生しました: " . $e->getMessage());
     }
