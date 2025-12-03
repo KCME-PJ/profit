@@ -34,6 +34,11 @@ try {
         ['id' => 'standard_hours', 'name' => '定時間', 'type' => 'time'],
         ['id' => 'overtime_hours', 'name' => '残業時間', 'type' => 'time'],
         ['id' => 'transferred_hours', 'name' => '振替時間', 'type' => 'time'],
+
+        // ▼▼▼ 追加: 労務費の行定義 ▼▼▼
+        ['id' => 'labor_cost', 'name' => '労務費', 'type' => 'calc'],
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
         ['id' => 'pre_tax_profit', 'name' => '税引前利益', 'type' => 'calc'],
         ['id' => 'headcount_total', 'name' => '人員(正+契)', 'type' => 'headcount'],
         ['id' => 'headcount_full', 'name' => '正社員', 'type' => 'headcount'],
@@ -48,6 +53,7 @@ try {
             'cp' => 0,
             'plan' => 0,
             'result' => 0,
+            // 以下のlabor_cost_xx系は不要になりますが、念のため残しても害はありません
             'labor_cost_cp' => 0,
             'labor_cost_plan' => 0,
             'labor_cost_result' => 0
@@ -204,7 +210,9 @@ try {
                 $aggregated['headcount_contract'][$sourceType] += $timeData['cont'];
                 $aggregated['headcount_dispatch'][$sourceType] += $timeData['disp'];
 
-                $aggregated['gross_profit']['labor_cost_' . $sourceType] += $timeData['labor_cost'];
+                // ▼▼▼ 修正: labor_cost 行に集計 ▼▼▼
+                $aggregated['labor_cost'][$sourceType] += $timeData['labor_cost'];
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
                 // 詳細データ作成
                 $keysToBreakdown = [
@@ -212,6 +220,7 @@ try {
                     'standard_hours' => $timeData['std'],
                     'overtime_hours' => $timeData['ovt'],
                     'transferred_hours' => $timeData['trans'],
+                    'labor_cost' => $timeData['labor_cost'], // ★ここにも追加しておくと詳細が見れます
                     'headcount_total' => $totalHead,
                     'headcount_full' => $timeData['ful'],
                     'headcount_contract' => $timeData['cont'],
@@ -238,8 +247,14 @@ try {
 
     // --- 5. 計算項目の処理 ---
     foreach (['cp', 'plan', 'result'] as $t) {
+        // 差引収益 = 収入 - 経費（労務費含まず）
         $aggregated['gross_profit'][$t] = $aggregated['revenue_total'][$t] - $aggregated['expense_total'][$t];
-        $labor = $aggregated['gross_profit']['labor_cost_' . $t] ?? 0;
+
+        // ▼▼▼ 修正: 集計済みの labor_cost 行の値を使用 ▼▼▼
+        $labor = $aggregated['labor_cost'][$t] ?? 0;
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        // 税引前利益 = 差引収益 - 労務費
         $aggregated['pre_tax_profit'][$t] = $aggregated['gross_profit'][$t] - $labor;
     }
 
@@ -289,12 +304,12 @@ function calcDiffRatio($vals, $name, $id)
     $plan = (float)$vals['plan'];
     $result = (float)$vals['result'];
 
-    // ★ 修正: 予定差 = 実績 - 予定
+    // 予定差 = 実績 - 予定
     $plan_diff = $result - $plan;
     // 予定比 = 実績 / 予定 (予定>0の場合のみ)
     $plan_ratio = ($plan > 0) ? ($result / $plan) * 100 : null;
 
-    // ★ 修正: CP差 = 実績 - CP
+    // CP差 = 実績 - CP
     $cp_diff = $result - $cp;
     // CP比 = 実績 / CP (CP>0の場合のみ)
     $cp_ratio = ($cp > 0) ? ($result / $cp) * 100 : null;
