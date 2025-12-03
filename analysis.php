@@ -103,7 +103,7 @@
 
                     <div class="col-md-2">
                         <label for="office-select" class="form-label small fw-bold mb-1">&nbsp;</label>
-                        <button type="button" id="btn-update" class="btn btn-primary btn-sm w-100">
+                        <button type="button" id="btn-update" class="btn btn-outline-primary btn-sm w-100">
                             <i class="bi bi-table me-1"></i> 集計実行
                         </button>
                     </div>
@@ -134,7 +134,7 @@
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="8" class="text-center py-5 text-muted">条件を選択して「集計実行」を押してください</td>
+                                    <td colspan="8" class="text-center py-5 text-muted">対象年月を選択して「集計実行」を押してください</td>
                                 </tr>
                             </tbody>
                         </table>
