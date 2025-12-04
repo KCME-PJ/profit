@@ -120,7 +120,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     <script>
         window.yearMonthData = <?= json_encode($years) ?>;
     </script>
-    <script src="../js/cp_edit_head.js" defer></script>
+    <script src="../js/cp_edit_head_v2.js" defer></script>
 </head>
 
 <body>
