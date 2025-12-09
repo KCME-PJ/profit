@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', function () {
             data.hourly_rate = hourlyRateInput.value === '' ? '' : parseFloat(hourlyRateInput.value) || 0;
         }
 
+        // 入力された賃率を全営業所データに同期する
         const currentRate = data.hourly_rate;
         for (const id in officeTimeDataLocal) {
             if (!officeTimeDataLocal[id]) officeTimeDataLocal[id] = {};
@@ -136,14 +137,36 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------
     if (officeSelect) {
         officeSelect.addEventListener('change', () => {
+            // 切り替え前の賃率を一時保存
+            const currentRate = hourlyRateInput ? hourlyRateInput.value : '';
+
+            // 現在のデータを保存
             captureCurrentOfficeTime(currentOfficeId);
+
+            // ID切り替え
             currentOfficeId = officeSelect.value;
+
+            // 新しいデータを描画（ここで賃率が上書きされる可能性がある）
             renderOfficeToDom(currentOfficeId);
+
+            // ★修正: 保存しておいた賃率を強制的に戻す
+            if (currentRate !== '' && hourlyRateInput) {
+                hourlyRateInput.value = currentRate;
+
+                // 切り替え先のデータにも即座に反映（念のため）
+                if (!officeTimeDataLocal[currentOfficeId]) {
+                    officeTimeDataLocal[currentOfficeId] = {};
+                }
+                officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
+            }
+
+            // 再計算して表示を更新
+            updateTotals();
         });
     }
 
     // ---------------------------------------------
-    // --- アコーディオンの連動制御 (★修正) ---
+    // --- アコーディオンの連動制御 ---
     // ---------------------------------------------
 
     // L1 (収入の部 / 経費の部) のボタン
@@ -183,7 +206,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         const l3Rows = document.querySelectorAll(l3TargetSelector);
 
                         l3Rows.forEach(l3Row => {
-                            // ★ 修正: getInstance ではなく getOrCreateInstance を使う
                             const l3CollapseInstance = bootstrap.Collapse.getOrCreateInstance(l3Row, { toggle: false });
                             if (l3CollapseInstance) {
                                 l3CollapseInstance.hide(); // L3を閉じる
@@ -229,12 +251,10 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     });
-    // (★アコーディオンロジックここまで)
-    // ---------------------------------------------
 
 
     // ---------------------------------------------
-    // --- 月選択時のデータ読み込み処理 (★修正) ---
+    // --- 月選択時のデータ読み込み処理 ---
     // ---------------------------------------------
     if (monthSelect) {
         monthSelect.addEventListener('change', function () {
@@ -267,7 +287,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         for (const [detailId, amount] of Object.entries(data.details)) {
                             const input = document.querySelector(`input[data-detail-id="${detailId}"]`);
                             if (input) {
-                                // 0 の場合は空欄にする (placeholder が 0 のため)
                                 input.value = (amount != 0) ? amount : '';
                             }
                         }
@@ -278,13 +297,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         for (const [itemId, amount] of Object.entries(data.revenues)) {
                             const input = document.querySelector(`input[data-revenue-item-id="${itemId}"]`);
                             if (input) {
-                                // 0 の場合は空欄にする
                                 input.value = (amount != 0) ? amount : '';
                             }
                         }
                     }
 
-                    // 合計など再計算 (データセット後に再度呼び出し)
+                    // 合計など再計算
                     updateTotals();
 
                 })
@@ -297,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---------------------------------------------
-    // --- 合計再計算 (★修正: 収入対応) ---
+    // --- 合計再計算 ---
     // ---------------------------------------------
     function updateTotals() {
         let totalHours = 0;
@@ -396,7 +414,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---------------------------------------------
-    // --- 入力変更時の更新処理 (★修正) ---
+    // --- 入力変更時の更新処理 ---
     // ---------------------------------------------
     document.querySelectorAll('.detail-input, .revenue-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')
         .forEach(input => {
@@ -441,7 +459,7 @@ document.addEventListener('DOMContentLoaded', function () {
         renderOfficeToDom(currentOfficeId);
     }
 
-    // アラートのURLクリーンアップ (アラートを閉じた時)
+    // アラートのURLクリーンアップ
     document.querySelectorAll('.alert .btn-close').forEach(btn => {
         btn.addEventListener('click', () => {
             if (window.history.replaceState) {
