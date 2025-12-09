@@ -308,9 +308,31 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------
     if (officeSelect) {
         officeSelect.addEventListener('change', () => {
-            captureCurrentOfficeTime(currentOfficeId); // 変更前の営業所データを保存
-            currentOfficeId = officeSelect.value; // 現在の営業所IDを更新
-            renderOfficeToDom(currentOfficeId); // 新しい営業所データを表示
+            // 切り替え前の賃率を一時保存
+            const currentRate = hourlyRateInput ? hourlyRateInput.value : '';
+
+            // 現在のデータを保存
+            captureCurrentOfficeTime(currentOfficeId);
+
+            // ID切り替え
+            currentOfficeId = officeSelect.value;
+
+            // 新しいデータを描画（ここで賃率が上書きされる可能性がある）
+            renderOfficeToDom(currentOfficeId);
+
+            // ★修正: 保存しておいた賃率を強制的に戻す
+            if (currentRate !== '' && hourlyRateInput) {
+                hourlyRateInput.value = currentRate;
+
+                // 切り替え先のデータにも即座に反映（念のため）
+                if (!officeTimeDataLocal[currentOfficeId]) {
+                    officeTimeDataLocal[currentOfficeId] = {};
+                }
+                officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
+            }
+
+            // 再計算して表示を更新
+            updateTotals();
         });
     }
 
