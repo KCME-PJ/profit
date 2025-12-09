@@ -120,15 +120,17 @@ require_once '../includes/database.php';
         <?php endif; ?>
         <form action="add_office.php" method="POST">
             <div class="mb-3">
-                <label for="officeName" class="form-label">係名</label>
-                <input type="text" class="form-control" id="officeName" name="office_name" required>
-            </div>
-            <div class="mb-3">
-                <label for="officeIdentifier" class="form-label">一意識別子</label>
+                <label for="officeIdentifier" class="form-label">営業所コード</label>
                 <input type="text" class="form-control" id="officeIdentifier" name="office_identifier"
-                    pattern="^[a-zA-Z0-9_-]+$" required>
-                <div class="form-text">半角英数字、ハイフン、アンダースコアのみ使用可能です。</div>
+                    pattern="^[a-zA-Z0-9_-]+$" placeholder="ex: 13E14210" required>
+                <div class="form-text">半角英数字で入力してください。</div>
             </div>
+
+            <div class="mb-3">
+                <label for="officeName" class="form-label">営業所名（係名）</label>
+                <input type="text" class="form-control" id="officeName" name="office_name" placeholder="ex: 安全品質センター" required>
+            </div>
+
             <div class="mb-3">
                 <label for="officeNote" class="form-label">説明 (任意)</label>
                 <textarea class="form-control" id="officeNote" name="note" rows="3"></textarea>

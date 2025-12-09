@@ -27,7 +27,8 @@ try {
     }
     unset($months); // 参照解除
 
-    // ★ 修正点 1: 収入カテゴリと収入項目を取得 (ここから追加)
+    // --------------------------------------------------------
+    // 1: 収入カテゴリと収入項目を取得
     // --------------------------------------------------------
     $revenueQuery = "SELECT c.id AS category_id, c.name AS category_name, i.id AS item_id, i.name AS item_name, i.note AS item_note
                       FROM revenue_categories c
@@ -54,10 +55,10 @@ try {
             ];
         }
     }
-    // (ここまで追加)
-    // --------------------------------------------------------
 
-    // 勘定科目、詳細を取得
+    // --------------------------------------------------------
+    // 2. 勘定科目、詳細を取得
+    // --------------------------------------------------------
     $accountsQuery =
         "SELECT 
         a.id AS account_id,
@@ -95,15 +96,14 @@ try {
 } catch (Exception $e) {
     echo "エラー: " . $e->getMessage();
     $accounts = [];
-    $revenues = []; // ★ $revenues も catch に追加
+    $revenues = [];
     $officeTimeData = [];
 }
 
 // 営業所リスト
-$stmt = $dbh->query("SELECT * FROM offices ORDER BY id ASC");
+// コード(identifier)順に並べ替え
+$stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
 $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$selectedMonth = 4;
 $selectedOffice = $offices[0]['id'] ?? 0;
 ?>
 
@@ -283,7 +283,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         <select id="officeSelect" class="form-select form-select-sm">
                             <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($office['name']) ?>
+                                    <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>

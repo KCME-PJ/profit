@@ -20,9 +20,9 @@ try {
     // 1. 収入カテゴリと収入項目を取得
     // --------------------------------------------------------
     $revenueQuery = "SELECT c.id AS category_id, c.name AS category_name, i.id AS item_id, i.name AS item_name, i.note AS item_note
-                     FROM revenue_categories c
-                     LEFT JOIN revenue_items i ON c.id = i.revenue_category_id
-                     ORDER BY c.sort_order ASC, c.id ASC, i.id ASC";
+                      FROM revenue_categories c
+                      LEFT JOIN revenue_items i ON c.id = i.revenue_category_id
+                      ORDER BY c.sort_order ASC, c.id ASC, i.id ASC";
     $revenueStmt = $dbh->prepare($revenueQuery);
     $revenueStmt->execute();
     $revenueDetails = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -81,7 +81,8 @@ try {
     }
 
     // 営業所リスト
-    $stmt = $dbh->query("SELECT * FROM offices ORDER BY id ASC");
+    // ★修正1: コード(identifier)順に並べ替え
+    $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
     $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $selectedOffice = $offices[0]['id'] ?? 0;
 } catch (Exception $e) {
@@ -238,7 +239,6 @@ try {
                 </div>
             </div>
 
-            <!-- info-box -->
             <div class="info-box p-3 border mb-3">
                 <div class="row align-items-end mb-2">
                     <div class="col-md-2">
@@ -265,7 +265,7 @@ try {
                         <select id="officeSelect" class="form-select form-select-sm" onchange="onOfficeChange()">
                             <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($office['name']) ?>
+                                    <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -318,7 +318,6 @@ try {
                 <button type="submit" class="btn btn-outline-danger btn-sm register-button">登録</button>
             </div>
 
-            <!-- 2段階アコーディオンテーブル (ID/Target/ParentをBootstrapの仕様に準拠) -->
             <div class="table-container mb-3" id="accordionRoot">
                 <table class="table table-bordered table-hover">
                     <thead>
@@ -331,10 +330,8 @@ try {
                     </thead>
                     <tbody>
 
-                        <!-- L1: 収入の部 -->
                         <tr class="table-light">
                             <td>
-                                <!-- L1 トグルボタン (Targetを .l1-revenue-group に) -->
                                 <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon-l1" data-bs-toggle="collapse" data-bs-target=".l1-revenue-group" aria-expanded="false">
                                     <i class="bi bi-plus-lg icon-small"></i>
                                 </button>
@@ -345,13 +342,9 @@ try {
                             <td class="text-end fw-bold" id="total-revenue">0</td>
                         </tr>
 
-                        <!-- L2: 収入カテゴリ -->
                         <?php foreach ($revenues as $categoryId => $category): ?>
-                            <!-- L2の行 (L1によって制御) -->
-                            <!-- L1のクラスを data-bs-parent で指定 -->
                             <tr class="collapse l1-revenue-group" data-bs-parent="#accordionRoot" id="l2-rev-row-<?= $categoryId ?>">
                                 <td class="ps-4">
-                                    <!-- L2 トグルボタン (Targetを .l3-rev-items-CATEGORYID に) -->
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon-l2" data-bs-toggle="collapse" data-bs-target=".l3-rev-items-<?= $categoryId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
@@ -362,10 +355,7 @@ try {
                                 <td class="text-end fw-bold" id="total-revenue-category-<?= $categoryId ?>">0</td>
                             </tr>
 
-                            <!-- L3: 収入項目 -->
                             <?php foreach ($category['items'] as $item): ?>
-                                <!-- L3の行 (L2によって制御) -->
-                                <!-- L2のIDを data-bs-parent に設定 -->
                                 <tr class="collapse l3-rev-items-<?= $categoryId ?>" data-bs-parent="#l2-rev-row-<?= $categoryId ?>" id="l3-rev-item-<?= $item['id'] ?>">
                                     <td></td>
                                     <td class="ps-5">
@@ -386,10 +376,8 @@ try {
                         <?php endforeach; ?>
 
 
-                        <!-- L1: 経費の部 -->
                         <tr class="table-light">
                             <td>
-                                <!-- L1 トグルボタン (Targetを .l1-expense-group に) -->
                                 <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon-l1" data-bs-toggle="collapse" data-bs-target=".l1-expense-group" aria-expanded="false">
                                     <i class="bi bi-plus-lg icon-small"></i>
                                 </button>
@@ -400,13 +388,9 @@ try {
                             <td class="text-end fw-bold" id="total-expense">0</td>
                         </tr>
 
-                        <!-- L2: 勘定科目（親） -->
                         <?php foreach ($accounts as $accountId => $account): ?>
-                            <!-- L2の行 (L1によって制御) -->
-                            <!-- data-bs-parent="#accordionRoot" を L2 に追加 -->
                             <tr class="collapse l1-expense-group" data-bs-parent="#accordionRoot" id="l2-acc-row-<?= $accountId ?>">
                                 <td class="ps-4">
-                                    <!-- L2 トグルボタン (Targetを .l3-acc-items-ACCOUNTID に) -->
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon-l2" data-bs-toggle="collapse" data-bs-target=".l3-acc-items-<?= $accountId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
@@ -417,10 +401,7 @@ try {
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0</td>
                             </tr>
 
-                            <!-- L3: 詳細（子） -->
                             <?php foreach ($account['details'] as $detail): ?>
-                                <!-- L3の行 (L2によって制御) -->
-                                <!-- L2のIDを data-bs-parent に設定 -->
                                 <tr class="collapse l3-acc-items-<?= $accountId ?>" data-bs-parent="#l2-acc-row-<?= $accountId ?>" id="l3-acc-item-<?= $detail['id'] ?>">
                                     <td></td>
                                     <td class="ps-5">
@@ -446,7 +427,6 @@ try {
         </form>
     </div>
 
-    <!-- (Bootstrap JSの読み込み) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {

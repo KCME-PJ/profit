@@ -90,9 +90,9 @@ try {
 }
 
 // 営業所リスト
-$stmt = $dbh->query("SELECT * FROM offices ORDER BY id ASC");
+// コード(identifier)順に並べ替え
+$stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
 $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 $selectedOffice = $offices[0]['id'] ?? 0;
 ?>
 
@@ -272,7 +272,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         <select id="officeSelect" class="form-select form-select-sm">
                             <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($office['name']) ?>
+                                    <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
