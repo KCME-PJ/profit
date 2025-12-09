@@ -45,6 +45,8 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
 </head>
 
 <body>
@@ -134,7 +136,8 @@ try {
     </nav>
     <div class="container mt-3">
         <h4 class="mb-4">詳細リスト</h4>
-        <table class="table table-bordered">
+
+        <table id="detailTable" class="table table-bordered table-striped">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -163,82 +166,108 @@ try {
                             </form>
                         </td>
                     </tr>
-
-                    <!-- 編集モーダル -->
-                    <div class="modal fade" id="editModal-<?= $detail['id'] ?>" tabindex="-1" aria-labelledby="editModalLabel-<?= $detail['id'] ?>" aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <form action="edit_detail.php" method="POST">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title" id="editModalLabel-<?= $detail['id'] ?>">詳細の編集</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        <?php if ($error && $form_data['id'] == $detail['id']): ?>
-                                            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-                                        <?php endif; ?>
-
-                                        <input type="hidden" name="id" value="<?= $detail['id'] ?>">
-                                        <div class="mb-3">
-                                            <label for="detailName-<?= $detail['id'] ?>" class="form-label">詳細名</label>
-                                            <input type="text" class="form-control" id="detailName-<?= $detail['id'] ?>" name="detail_name"
-                                                value="<?= htmlspecialchars($detail['detail_name']) ?>" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="detailIdentifier-<?= $detail['id'] ?>" class="form-label">一意識別子</label>
-                                            <input type="text" class="form-control" id="detailIdentifier-<?= $detail['id'] ?>" name="detail_identifier"
-                                                value="<?= htmlspecialchars($detail['identifier']) ?>" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="detailNote-<?= $detail['id'] ?>" class="form-label">説明 (任意)</label>
-                                            <textarea class="form-control" id="detailNote-<?= $detail['id'] ?>" name="note" rows="3"><?= htmlspecialchars($detail['note']) ?></textarea>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="detailAccount-<?= $detail['id'] ?>" class="form-label">勘定科目</label>
-                                            <select class="form-select" id="detailAccount-<?= $detail['id'] ?>" name="account_id" required>
-                                                <option value="<?= htmlspecialchars($form_data['account_id'] ?? $detail['account_id']) ?>" selected>
-                                                    <?= htmlspecialchars($detail['account_name']) ?>
-                                                </option>
-                                                <?php foreach ($accounts as $account): ?>
-                                                    <option value="<?= $account['id'] ?>"><?= htmlspecialchars($account['name']) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                        </div>
-                                        <!-- 営業所の選択 -->
-                                        <div class="mb-3">
-                                            <label for="detailOffice-<?= $detail['id'] ?>" class="form-label">営業所</label>
-                                            <select class="form-select" id="detailOffice-<?= $detail['id'] ?>" name="office_id" required>
-                                                <option value="<?= htmlspecialchars($form_data['office_id'] ?? $detail['office_id']) ?>" selected>
-                                                    <?= htmlspecialchars($detail['office_name'] ?? '未設定') ?>
-                                                </option>
-                                                <?php foreach ($offices as $office): ?>
-                                                    <option value="<?= $office['id'] ?>"><?= htmlspecialchars($office['name']) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                                        <button type="submit" class="btn btn-primary">保存</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- モーダルここまで -->
                 <?php endforeach; ?>
             </tbody>
         </table>
     </div>
 
+    <?php foreach ($details as $detail): ?>
+        <div class="modal fade" id="editModal-<?= $detail['id'] ?>" tabindex="-1" aria-labelledby="editModalLabel-<?= $detail['id'] ?>" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form action="edit_detail.php" method="POST">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="editModalLabel-<?= $detail['id'] ?>">詳細の編集</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            <?php if ($error && ($form_data['id'] ?? '') == $detail['id']): ?>
+                                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+                            <?php endif; ?>
+
+                            <input type="hidden" name="id" value="<?= $detail['id'] ?>">
+                            <div class="mb-3">
+                                <label for="detailName-<?= $detail['id'] ?>" class="form-label">詳細名</label>
+                                <input type="text" class="form-control" id="detailName-<?= $detail['id'] ?>" name="detail_name"
+                                    value="<?= htmlspecialchars($detail['detail_name']) ?>" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="detailIdentifier-<?= $detail['id'] ?>" class="form-label">一意識別子</label>
+                                <input type="text" class="form-control" id="detailIdentifier-<?= $detail['id'] ?>" name="detail_identifier"
+                                    value="<?= htmlspecialchars($detail['identifier']) ?>" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="detailNote-<?= $detail['id'] ?>" class="form-label">説明 (任意)</label>
+                                <textarea class="form-control" id="detailNote-<?= $detail['id'] ?>" name="note" rows="3"><?= htmlspecialchars($detail['note']) ?></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="detailAccount-<?= $detail['id'] ?>" class="form-label">勘定科目</label>
+                                <select class="form-select" id="detailAccount-<?= $detail['id'] ?>" name="account_id" required>
+                                    <option value="<?= htmlspecialchars($form_data['account_id'] ?? $detail['account_id']) ?>" selected>
+                                        <?= htmlspecialchars($detail['account_name']) ?>
+                                    </option>
+                                    <?php foreach ($accounts as $account): ?>
+                                        <option value="<?= $account['id'] ?>"><?= htmlspecialchars($account['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="detailOffice-<?= $detail['id'] ?>" class="form-label">営業所</label>
+                                <select class="form-select" id="detailOffice-<?= $detail['id'] ?>" name="office_id" required>
+                                    <option value="<?= htmlspecialchars($form_data['office_id'] ?? $detail['office_id']) ?>" selected>
+                                        <?= htmlspecialchars($detail['office_name'] ?? '未設定') ?>
+                                    </option>
+                                    <?php foreach ($offices as $office): ?>
+                                        <option value="<?= $office['id'] ?>"><?= htmlspecialchars($office['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="submit" class="btn btn-primary">保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
         crossorigin="anonymous"></script>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+
     <script>
+        $(document).ready(function() {
+            $('#detailTable').DataTable({
+                // 日本語化設定
+                language: {
+                    url: "https://cdn.datatables.net/plug-ins/1.13.4/i18n/ja.json"
+                },
+                // 表示件数の設定（例: 10件, 25件, 50件, 全件）
+                lengthMenu: [
+                    [10, 25, 50, -1],
+                    [10, 25, 50, "全件"]
+                ],
+                // 初期並び順 (IDの昇順)
+                order: [
+                    [0, "asc"]
+                ]
+            });
+        });
+
+        // エラー時のモーダル再表示処理
         <?php if ($error && $form_data): ?>
             var modalId = "#editModal-<?= $form_data['id'] ?>";
-            var modal = new bootstrap.Modal(document.querySelector(modalId));
-            modal.show();
+            var modalElement = document.querySelector(modalId);
+            if (modalElement) {
+                var modal = new bootstrap.Modal(modalElement);
+                modal.show();
+            }
         <?php endif; ?>
     </script>
 </body>
