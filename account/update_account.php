@@ -1,23 +1,38 @@
 <?php
 session_start();
 require_once '../includes/database.php';
+require_once 'validate_account.php'; // バリデーションファイルを読み込み
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $id = $_POST['account_id'] ?? null;
-    $name = $_POST['account_name'] ?? null;
-    $identifier = $_POST['account_identifier'] ?? null;
-    $note = $_POST['description'] ?? null;
 
-    if (!$id || !$name || !$identifier) {
-        $_SESSION['error'] = '必要なデータが不足しています。';
+    // バリデーションチェック (共通関数を使用)
+    // フォームの name 属性が (account_name, account_identifier, note) であることを前提とします
+    $errors = validateAccountData($_POST);
+
+    // IDが存在するかのチェックは validateAccountData には含まれないため、個別に確認
+    if (empty($_POST['account_id'])) {
+        $errors['account_id'] = '更新対象のIDが指定されていません。';
+    }
+
+    // エラーがあればリダイレクト
+    if (!empty($errors)) {
+        $_SESSION['error'] = implode('<br>', $errors);
         header('Location: account_list.php');
         exit;
     }
 
+    // バリデーション通過後のデータ取得
+    // trim して取得
+    $id = $_POST['account_id'];
+    $name = trim($_POST['account_name']);
+    $identifier = trim($_POST['account_identifier']);
+    $note = isset($_POST['note']) ? trim($_POST['note']) : '';
+
     try {
         $db = getDb();
 
-        // 重複チェック
+        // 重複チェック (更新用)
+        // 「自分以外のID」で「同じ名前」のものがあるかチェック
         $sqlCheck = "SELECT COUNT(*) FROM accounts WHERE name = :name AND id != :id";
         $stmt = $db->prepare($sqlCheck);
         $stmt->execute([':name' => $name, ':id' => $id]);

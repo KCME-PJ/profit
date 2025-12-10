@@ -1,3 +1,4 @@
+<?php session_start(); ?>
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -9,6 +10,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 </head>
 
 <body>
@@ -114,21 +117,23 @@
     ?>
     <div class="container mt-5">
         <?php if (isset($_SESSION['error'])): ?>
-            <div class="alert alert-danger">
-                <?php echo htmlspecialchars($_SESSION['error']); ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?php echo $_SESSION['error']; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 <?php unset($_SESSION['error']); ?>
             </div>
         <?php endif; ?>
 
         <?php if (isset($_SESSION['success'])): ?>
-            <div class="alert alert-success">
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <?php echo htmlspecialchars($_SESSION['success']); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 <?php unset($_SESSION['success']); ?>
             </div>
         <?php endif; ?>
 
         <h4>勘定科目一覧</h4>
-        <table class="table table-bordered table-hover">
+        <table id="accountTable" class="table table-bordered table-hover">
             <thead class="table-light">
                 <tr>
                     <th>ID</th>
@@ -146,10 +151,8 @@
                         <td><?= htmlspecialchars($account['identifier']) ?></td>
                         <td><?= htmlspecialchars($account['note']) ?></td>
                         <td>
-                            <!-- 編集ボタン -->
                             <button class="btn btn-sm btn-warning" data-bs-toggle="modal"
                                 data-bs-target="#editModal-<?= $account['id'] ?>">編集</button>
-                            <!-- 削除ボタン -->
                             <button
                                 class="btn btn-sm btn-danger"
                                 data-bs-toggle="modal"
@@ -164,7 +167,7 @@
             </tbody>
         </table>
     </div>
-    <!-- 編集ボタンmodal -->
+
     <?php foreach ($accounts as $account): ?>
         <div class="modal fade" id="editModal-<?= $account['id'] ?>" tabindex="-1" aria-labelledby="editModalLabel-<?= $account['id'] ?>" aria-hidden="true">
             <div class="modal-dialog">
@@ -175,7 +178,7 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
                         </div>
                         <div class="modal-body">
-                            <input type="hidden" name="account_id" value="<?= $account['id'] ?>"> <!-- 編集対象ID -->
+                            <input type="hidden" name="account_id" value="<?= $account['id'] ?>">
                             <div class="mb-3">
                                 <label for="editAccountName-<?= $account['id'] ?>" class="form-label">勘定科目名</label>
                                 <input type="text" class="form-control" id="editAccountName-<?= $account['id'] ?>" name="account_name" value="<?= htmlspecialchars($account['name']) ?>"
@@ -187,8 +190,8 @@
                                     value="<?= htmlspecialchars($account['identifier']) ?>" pattern="[a-zA-Z0-9]+" title="半角英数字のみを入力してください" required>
                             </div>
                             <div class="mb-3">
-                                <label for="editDescription-<?= $account['id'] ?>" class="form-label">説明 (任意)</label>
-                                <textarea class="form-control" id="editDescription-<?= $account['id'] ?>" name="description"
+                                <label for="editNote-<?= $account['id'] ?>" class="form-label">説明 (任意)</label>
+                                <textarea class="form-control" id="editNote-<?= $account['id'] ?>" name="note"
                                     rows="3"><?= htmlspecialchars($account['note']) ?></textarea>
                             </div>
                         </div>
@@ -201,7 +204,7 @@
             </div>
         </div>
     <?php endforeach; ?>
-    <!-- 削除ボタンmodal -->
+
     <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -222,25 +225,31 @@
             </div>
         </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
         crossorigin="anonymous">
     </script>
-    <script>
-        document.querySelectorAll('.edit-button').forEach(button => {
-            button.addEventListener('click', function() {
-                const id = this.getAttribute('data-id');
-                const name = this.getAttribute('data-name');
-                const identifier = this.getAttribute('data-identifier');
-                const note = this.getAttribute('data-note');
 
-                document.getElementById('editAccountId').value = id;
-                document.getElementById('editAccountName').value = name;
-                document.getElementById('editAccountIdentifier').value = identifier;
-                document.getElementById('editNote').value = note;
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            $('#accountTable').DataTable({
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ja.json"
+                },
+                pageLength: 10,
+                order: [
+                    [0, "asc"]
+                ]
             });
         });
     </script>
+
     <script>
         const deleteModal = document.getElementById('deleteModal');
         deleteModal.addEventListener('show.bs.modal', function(event) {
