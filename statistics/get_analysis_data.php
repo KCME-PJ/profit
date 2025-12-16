@@ -34,11 +34,7 @@ try {
         ['id' => 'standard_hours', 'name' => '定時間', 'type' => 'time'],
         ['id' => 'overtime_hours', 'name' => '残業時間', 'type' => 'time'],
         ['id' => 'transferred_hours', 'name' => '振替時間', 'type' => 'time'],
-
-        // ▼▼▼ 追加: 労務費の行定義 ▼▼▼
         ['id' => 'labor_cost', 'name' => '労務費', 'type' => 'calc'],
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
         ['id' => 'pre_tax_profit', 'name' => '税引前利益', 'type' => 'calc'],
         ['id' => 'headcount_total', 'name' => '人員(正+契)', 'type' => 'headcount'],
         ['id' => 'headcount_full', 'name' => '正社員', 'type' => 'headcount'],
@@ -53,7 +49,6 @@ try {
             'cp' => 0,
             'plan' => 0,
             'result' => 0,
-            // 以下のlabor_cost_xx系は不要になりますが、念のため残しても害はありません
             'labor_cost_cp' => 0,
             'labor_cost_plan' => 0,
             'labor_cost_result' => 0
@@ -71,11 +66,13 @@ try {
 
         $officeFilterTime = "";
         $officeFilterDetails = "";
+        $officeFilterRevenue = ""; // 収入用のフィルターを追加
         $paramsBase = [];
 
         if ($officeId !== 'all') {
             $officeFilterTime = " AND t.office_id = :oid ";
             $officeFilterDetails = " AND det.office_id = :oid ";
+            $officeFilterRevenue = " AND ri.office_id = :oid "; // 収入項目の営業所紐付けでフィルタ
             $paramsBase[':oid'] = $officeId;
         }
 
@@ -106,7 +103,11 @@ try {
             $paramsDetails = array_merge([':pid' => $parentId], $paramsBase);
             $monthLabel = formatMonthJP($year, $month);
 
-            // --- A. 経費詳細集計 ---
+            // --- [追加] 営業所別集計用の一時配列初期化 ---
+            // キー: office_id, 値: ['name'=>..., 'code'=>..., 'rev'=>0, 'exp'=>0, 'labor'=>0]
+            $officeMonthStats = [];
+
+            // --- A. 経費詳細集計 (勘定科目別) ---
             $sqlDet = "
                 SELECT a.id as acc_id, a.name as acc_name, d.detail_id, det.name as detail_name, SUM(d.amount) as amount
                 FROM " . $tablePrefix . "_details d
@@ -124,13 +125,13 @@ try {
                 if (isset($aggregated[$accKey])) $aggregated[$accKey][$sourceType] += $row['amount'];
                 $aggregated['expense_total'][$sourceType] += $row['amount'];
 
-                // 詳細データ（月別）
+                // 詳細データ（勘定科目別）
                 $uniqueKey = $accKey . '_' . $row['detail_id'] . '_' . $ymStr;
                 if (!isset($detailsBuffer[$accKey][$uniqueKey])) {
                     $detailsBuffer[$accKey][$uniqueKey] = [
                         'detail_name' => $row['detail_name'],
                         'month_name' => $monthLabel,
-                        'sort_key' => $ymStr . '_' . $row['detail_name'], // ソートキー: 年月_詳細名
+                        'sort_key' => $ymStr . '_' . $row['detail_name'],
                         'cp' => 0,
                         'plan' => 0,
                         'result' => 0
@@ -139,16 +140,37 @@ try {
                 $detailsBuffer[$accKey][$uniqueKey][$sourceType] += $row['amount'];
             }
 
-            // --- B. 収入詳細集計 ---
+            // --- [追加] 経費の営業所別集計 (計算用) ---
+            // 勘定科目別とは別に、営業所IDでグルーピングして取得
+            $sqlExpOffice = "
+                SELECT det.office_id, o.name as office_name, o.identifier, SUM(d.amount) as amount
+                FROM " . $tablePrefix . "_details d
+                JOIN details det ON d.detail_id = det.id
+                LEFT JOIN offices o ON det.office_id = o.id
+                WHERE d." . $fkName . " = :pid " . $officeFilterDetails . "
+                GROUP BY det.office_id, o.name, o.identifier
+            ";
+            $stmtExpOffice = $dbh->prepare($sqlExpOffice);
+            $stmtExpOffice->execute($paramsDetails);
+            while ($row = $stmtExpOffice->fetch(PDO::FETCH_ASSOC)) {
+                $oid = $row['office_id'] ?? 0;
+                if (!isset($officeMonthStats[$oid])) {
+                    $officeMonthStats[$oid] = initOfficeStats($row['office_name'], $row['identifier']);
+                }
+                $officeMonthStats[$oid]['exp'] += $row['amount'];
+            }
+
+            // --- B. 収入詳細集計 (項目別) ---
+            // ※既存コードでは収入に $officeFilterDetails が適用されていなかったので修正して適用
             $sqlRev = "
                 SELECT ri.id as item_id, ri.name as item_name, SUM(r.amount) as amount
                 FROM " . $tablePrefix . "_revenues r
                 JOIN revenue_items ri ON r.revenue_item_id = ri.id
-                WHERE r." . $fkName . " = :pid
+                WHERE r." . $fkName . " = :pid " . $officeFilterRevenue . "
                 GROUP BY ri.id, ri.name
             ";
             $stmtRev = $dbh->prepare($sqlRev);
-            $stmtRev->execute([':pid' => $parentId]);
+            $stmtRev->execute($paramsDetails);
             $rowsRev = $stmtRev->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($rowsRev as $row) {
@@ -160,7 +182,7 @@ try {
                     $detailsBuffer[$revKey][$uniqueKey] = [
                         'detail_name' => $row['item_name'],
                         'month_name' => $monthLabel,
-                        'sort_key' => $ymStr . '_' . $row['item_name'], // ソートキー: 年月_項目名
+                        'sort_key' => $ymStr . '_' . $row['item_name'],
                         'cp' => 0,
                         'plan' => 0,
                         'result' => 0
@@ -169,10 +191,106 @@ try {
                 $detailsBuffer[$revKey][$uniqueKey][$sourceType] += $row['amount'];
             }
 
+            // --- [追加] 収入の営業所別集計 (計算用) ---
+            $sqlRevOffice = "
+                SELECT ri.office_id, o.name as office_name, o.identifier, SUM(r.amount) as amount
+                FROM " . $tablePrefix . "_revenues r
+                JOIN revenue_items ri ON r.revenue_item_id = ri.id
+                LEFT JOIN offices o ON ri.office_id = o.id
+                WHERE r." . $fkName . " = :pid " . $officeFilterRevenue . "
+                GROUP BY ri.office_id, o.name, o.identifier
+            ";
+            $stmtRevOffice = $dbh->prepare($sqlRevOffice);
+            $stmtRevOffice->execute($paramsDetails);
+            while ($row = $stmtRevOffice->fetch(PDO::FETCH_ASSOC)) {
+                $oid = $row['office_id'] ?? 0;
+                if (!isset($officeMonthStats[$oid])) {
+                    $officeMonthStats[$oid] = initOfficeStats($row['office_name'], $row['identifier']);
+                }
+                $officeMonthStats[$oid]['rev'] += $row['amount'];
+            }
+
+
             // --- C. 時間・人員集計 (Time) ---
             $rateCol = ($sourceType === 'cp') ? 't.hourly_rate' : ':base_rate';
             $timeFkColumn = 'monthly_' . $sourceType . '_id';
 
+            // 1. 詳細表示用：営業所ごとの集計
+            $sqlTimeDetails = "
+                SELECT 
+                    t.office_id,
+                    o.name as office_name,
+                    o.identifier as office_code,
+                    SUM(t.standard_hours) as std,
+                    SUM(t.overtime_hours) as ovt,
+                    SUM(t.transferred_hours) as trans,
+                    SUM(t.fulltime_count) as ful,
+                    SUM(t.contract_count) as cont,
+                    SUM(t.dispatch_count) as disp,
+                    SUM( (t.standard_hours + t.overtime_hours + t.transferred_hours) * " . $rateCol . " ) as labor_cost
+                FROM " . $tablePrefix . "_time t
+                LEFT JOIN offices o ON t.office_id = o.id
+                WHERE t." . $timeFkColumn . " = :pid 
+                " . ($officeId !== 'all' ? " AND t.office_id = :oid " : "") . "
+                GROUP BY t.office_id, o.name, o.identifier
+                ORDER BY o.identifier
+            ";
+
+            $paramsTimeDetails = array_merge([':pid' => $parentId], $paramsBase);
+            if ($sourceType !== 'cp') {
+                $paramsTimeDetails[':base_rate'] = $baseHourlyRate;
+            }
+
+            $stmtTimeDetails = $dbh->prepare($sqlTimeDetails);
+            $stmtTimeDetails->execute($paramsTimeDetails);
+            $timeDetailsData = $stmtTimeDetails->fetchAll(PDO::FETCH_ASSOC);
+
+            // 詳細データをバッファに格納 (営業所単位)
+            foreach ($timeDetailsData as $dRow) {
+                $dTotalH = $dRow['std'] + $dRow['ovt'] + $dRow['trans'];
+                $dTotalHead = $dRow['ful'] + $dRow['cont'];
+                $officeName = $dRow['office_name'] ?? '不明な営業所';
+                $officeCode = $dRow['office_code'] ?? '99999';
+                $oid = $dRow['office_id'];
+
+                // [追加] 労務費を営業所別集計配列にセット
+                if (!isset($officeMonthStats[$oid])) {
+                    $officeMonthStats[$oid] = initOfficeStats($officeName, $officeCode);
+                }
+                $officeMonthStats[$oid]['labor'] += $dRow['labor_cost'];
+
+                $keysToBreakdown = [
+                    'total_hours' => $dTotalH,
+                    'standard_hours' => $dRow['std'],
+                    'overtime_hours' => $dRow['ovt'],
+                    'transferred_hours' => $dRow['trans'],
+                    'labor_cost' => $dRow['labor_cost'],
+                    'headcount_total' => $dTotalHead,
+                    'headcount_full' => $dRow['ful'],
+                    'headcount_contract' => $dRow['cont'],
+                    'headcount_dispatch' => $dRow['disp'],
+                ];
+
+                foreach ($keysToBreakdown as $k => $val) {
+                    $uniqueKey = $k . '_' . $ymStr . '_' . $oid;
+
+                    if (!isset($detailsBuffer[$k][$uniqueKey])) {
+                        $detailsBuffer[$k][$uniqueKey] = [
+                            'detail_name' => $officeName,
+                            'month_name' => $monthLabel,
+                            'sort_key' => $ymStr . '_' . $officeCode,
+                            'cp' => 0,
+                            'plan' => 0,
+                            'result' => 0
+                        ];
+                    }
+                    $detailsBuffer[$k][$uniqueKey][$sourceType] += $val;
+                }
+            }
+
+
+            // 2. 集計サマリ用（全体の合算）
+            // ... (既存ロジックそのまま維持) ...
             $sqlTime = "
                 SELECT 
                     SUM(t.standard_hours) as std,
@@ -191,7 +309,6 @@ try {
             if ($sourceType !== 'cp') {
                 $paramsTime[':base_rate'] = $baseHourlyRate;
             }
-
             $stmtTime = $dbh->prepare($sqlTime);
             $stmtTime->execute($paramsTime);
             $timeData = $stmtTime->fetch(PDO::FETCH_ASSOC);
@@ -204,57 +321,54 @@ try {
                 $aggregated['standard_hours'][$sourceType] += $timeData['std'];
                 $aggregated['overtime_hours'][$sourceType] += $timeData['ovt'];
                 $aggregated['transferred_hours'][$sourceType] += $timeData['trans'];
-
                 $aggregated['headcount_total'][$sourceType] += $totalHead;
                 $aggregated['headcount_full'][$sourceType] += $timeData['ful'];
                 $aggregated['headcount_contract'][$sourceType] += $timeData['cont'];
                 $aggregated['headcount_dispatch'][$sourceType] += $timeData['disp'];
-
-                // ▼▼▼ 修正: labor_cost 行に集計 ▼▼▼
                 $aggregated['labor_cost'][$sourceType] += $timeData['labor_cost'];
-                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            }
 
-                // 詳細データ作成
-                $keysToBreakdown = [
-                    'total_hours' => $totalH,
-                    'standard_hours' => $timeData['std'],
-                    'overtime_hours' => $timeData['ovt'],
-                    'transferred_hours' => $timeData['trans'],
-                    'labor_cost' => $timeData['labor_cost'], // ★ここにも追加しておくと詳細が見れます
-                    'headcount_total' => $totalHead,
-                    'headcount_full' => $timeData['ful'],
-                    'headcount_contract' => $timeData['cont'],
-                    'headcount_dispatch' => $timeData['disp'],
+            // --- [追加] 営業所ごとの差引収益・税引前利益・経費合計を計算してバッファへ ---
+            foreach ($officeMonthStats as $oid => $stats) {
+                $rev = $stats['rev'];
+                $exp = $stats['exp'];
+                $labor = $stats['labor'];
+
+                // 差引収益 = 収入 - 経費 (労務費除く)
+                $gross = $rev - $exp;
+                // 税引前利益 = 差引収益 - 労務費
+                $preTax = $gross - $labor;
+
+                $targetKeys = [
+                    'expense_total' => $exp,        // 経費合計
+                    'gross_profit' => $gross,       // 差引収益
+                    'pre_tax_profit' => $preTax     // 税引前利益
                 ];
 
-                foreach ($keysToBreakdown as $k => $val) {
-                    $uniqueKey = $k . '_' . $ymStr;
+                foreach ($targetKeys as $k => $val) {
+                    // ユニークキー: 項目_年月_営業所ID
+                    $uniqueKey = $k . '_' . $ymStr . '_' . $oid;
+
                     if (!isset($detailsBuffer[$k][$uniqueKey])) {
                         $detailsBuffer[$k][$uniqueKey] = [
-                            'detail_name' => '-',
+                            'detail_name' => $stats['name'],
                             'month_name' => $monthLabel,
-                            'sort_key' => $ymStr,
+                            'sort_key' => $ymStr . '_' . $stats['code'],
                             'cp' => 0,
                             'plan' => 0,
                             'result' => 0
                         ];
                     }
-                    $detailsBuffer[$k][$uniqueKey][$sourceType] = $val;
+                    $detailsBuffer[$k][$uniqueKey][$sourceType] += $val;
                 }
             }
         }
     }
 
-    // --- 5. 計算項目の処理 ---
+    // --- 5. 計算項目の処理 (全体のサマリ計算) ---
     foreach (['cp', 'plan', 'result'] as $t) {
-        // 差引収益 = 収入 - 経費（労務費含まず）
         $aggregated['gross_profit'][$t] = $aggregated['revenue_total'][$t] - $aggregated['expense_total'][$t];
-
-        // ▼▼▼ 修正: 集計済みの labor_cost 行の値を使用 ▼▼▼
         $labor = $aggregated['labor_cost'][$t] ?? 0;
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-        // 税引前利益 = 差引収益 - 労務費
         $aggregated['pre_tax_profit'][$t] = $aggregated['gross_profit'][$t] - $labor;
     }
 
@@ -278,7 +392,7 @@ try {
                 $detailList[] = $calc;
             }
 
-            // 詳細ソート (年月順)
+            // 詳細ソート (年月順 > 営業所identifier順、または項目名順)
             usort($detailList, function ($a, $b) {
                 return strcmp($a['sort_key'], $b['sort_key']);
             });
@@ -298,20 +412,27 @@ try {
 
 // --- ヘルパー関数 ---
 
+function initOfficeStats($name, $code)
+{
+    return [
+        'name' => $name ?? '不明',
+        'code' => $code ?? '99999',
+        'rev' => 0,
+        'exp' => 0,
+        'labor' => 0
+    ];
+}
+
 function calcDiffRatio($vals, $name, $id)
 {
     $cp = (float)$vals['cp'];
     $plan = (float)$vals['plan'];
     $result = (float)$vals['result'];
 
-    // 予定差 = 実績 - 予定
     $plan_diff = $result - $plan;
-    // 予定比 = 実績 / 予定 (予定>0の場合のみ)
     $plan_ratio = ($plan > 0) ? ($result / $plan) * 100 : null;
 
-    // CP差 = 実績 - CP
     $cp_diff = $result - $cp;
-    // CP比 = 実績 / CP (CP>0の場合のみ)
     $cp_ratio = ($cp > 0) ? ($result / $cp) * 100 : null;
 
     return [
