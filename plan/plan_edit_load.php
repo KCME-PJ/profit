@@ -25,7 +25,7 @@ try {
         'plan_id' => 0,
         'offices' => [], // 営業所ごとの時間データ格納キー
         'details' => [],
-        'revenues' => [], // ★ 修正: 'revenues' を追加
+        'revenues' => [],
         'status' => 'none',
         'common_hourly_rate' => 0
     ];
@@ -39,7 +39,7 @@ try {
         $common_hourly_rate = (float)($plan['hourly_rate'] ?? 0);
         $response['common_hourly_rate'] = $common_hourly_rate;
 
-        // 2. 営業所ごとの時間・人数データを全件取得
+        // 2. 営業所ごとの時間・人数データを取得
         $timeStmt = $dbh->prepare("SELECT * FROM monthly_plan_time WHERE monthly_plan_id = ?");
         $timeStmt->execute([$planId]);
 
@@ -52,12 +52,11 @@ try {
                 'fulltime_count'    => (int)($row['fulltime_count'] ?? 0),
                 'contract_count'    => (int)($row['contract_count'] ?? 0),
                 'dispatch_count'    => (int)($row['dispatch_count'] ?? 0),
-                // 賃率は親から取得した共通値を格納
                 'hourly_rate'       => $common_hourly_rate,
             ];
         }
 
-        // 3. 詳細データ（detail_id ⇒ amount）の取得
+        // 3. 詳細データ（経費）の取得
         $detailStmt = $dbh->prepare("
             SELECT detail_id, amount
             FROM monthly_plan_details
@@ -65,10 +64,9 @@ try {
         ");
         $detailStmt->execute(['plan_id' => $planId]);
         $detailsData = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
-
         $response['details'] = array_column($detailsData, 'amount', 'detail_id');
 
-        // ★ 修正: 4. 収入データ (revenue_item_id ⇒ amount) の取得 (forecast_edit_load.php L84-L94 をコピー・修正)
+        // 4. 収入データ
         $revenueStmt = $dbh->prepare("
             SELECT revenue_item_id, amount
             FROM monthly_plan_revenues
@@ -77,8 +75,6 @@ try {
         $revenueStmt->execute(['plan_id' => $planId]);
         $revenueData = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
         $response['revenues'] = array_column($revenueData, 'amount', 'revenue_item_id');
-        // (ここまで追加)
-
     } else {
         // データが存在しない場合
         $response['status'] = 'none';

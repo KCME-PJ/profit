@@ -7,7 +7,7 @@ $dbh = getDb();
 
 try {
     // 月次 CP 登録済みの年と月を取得
-    $query = "SELECT DISTINCT year, month FROM monthly_cp";
+    $query = "SELECT DISTINCT year, month FROM monthly_cp ORDER BY year DESC, month DESC";
     $stmt = $dbh->prepare($query);
     $stmt->execute();
     $registeredDates = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -17,7 +17,8 @@ try {
     foreach ($registeredDates as $date) {
         $years[$date['year']][] = $date['month'];
     }
-    // 4月始まりソート
+
+    // 4月始まりのソート順を適用
     foreach ($years as &$months) {
         usort($months, function ($a, $b) {
             $a_sort = $a < 4 ? $a + 12 : $a;
@@ -25,14 +26,22 @@ try {
             return $a_sort <=> $b_sort;
         });
     }
-    unset($months); // 参照解除
+    unset($months);
 
     // --------------------------------------------------------
-    // 1: 収入カテゴリと収入項目を取得
+    // 1. 収入カテゴリと収入項目を取得
     // --------------------------------------------------------
-    $revenueQuery = "SELECT c.id AS category_id, c.name AS category_name, i.id AS item_id, i.name AS item_name, i.note AS item_note
+    $revenueQuery = "SELECT 
+                        c.id AS category_id, 
+                        c.name AS category_name, 
+                        i.id AS item_id, 
+                        i.name AS item_name, 
+                        i.note AS item_note,
+                        i.office_id AS item_office_id,
+                        o.name AS item_office_name
                       FROM revenue_categories c
                       LEFT JOIN revenue_items i ON c.id = i.revenue_category_id
+                      LEFT JOIN offices o ON i.office_id = o.id
                       ORDER BY c.sort_order ASC, c.id ASC, i.id ASC";
     $revenueStmt = $dbh->prepare($revenueQuery);
     $revenueStmt->execute();
@@ -51,29 +60,32 @@ try {
             $revenues[$categoryId]['items'][] = [
                 'id' => $row['item_id'],
                 'name' => $row['item_name'],
-                'note' => $row['item_note']
+                'note' => $row['item_note'],
+                'office_id' => $row['item_office_id'],
+                'office_name' => $row['item_office_name']
             ];
         }
     }
 
     // --------------------------------------------------------
-    // 2. 勘定科目、詳細を取得
+    // 2. 勘定科目、詳細情報の取得
     // --------------------------------------------------------
-    $accountsQuery =
-        "SELECT 
-        a.id AS account_id,
-        a.name AS account_name,
-        d.id AS detail_id,
-        d.name AS detail_name,
-        d.note AS detail_note 
-        FROM accounts a
-        LEFT JOIN details d ON a.id = d.account_id
-        ORDER BY a.id ASC, d.id ASC";
+    $accountsQuery = "SELECT 
+                        a.id AS account_id, 
+                        a.name AS account_name, 
+                        d.id AS detail_id, 
+                        d.name AS detail_name, 
+                        d.note AS detail_note,
+                        d.office_id AS detail_office_id,
+                        o.name AS detail_office_name
+                      FROM accounts a
+                      LEFT JOIN details d ON a.id = d.account_id
+                      LEFT JOIN offices o ON d.office_id = o.id
+                      ORDER BY a.id ASC, d.id ASC";
     $accountsStmt = $dbh->prepare($accountsQuery);
     $accountsStmt->execute();
     $accountsDetails = $accountsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // データを構造化
     $accounts = [];
     foreach ($accountsDetails as $row) {
         $accountId = $row['account_id'];
@@ -87,21 +99,18 @@ try {
             $accounts[$accountId]['details'][] = [
                 'id' => $row['detail_id'],
                 'name' => $row['detail_name'],
-                'note' => $row['detail_note']
+                'note' => $row['detail_note'],
+                'office_id' => $row['detail_office_id'],
+                'office_name' => $row['detail_office_name']
             ];
         }
     }
-    $officeTimeData = []; // (JSでロードするためPHPでは初期化のみ)
-
 } catch (Exception $e) {
-    echo "エラー: " . $e->getMessage();
     $accounts = [];
     $revenues = [];
-    $officeTimeData = [];
 }
 
 // 営業所リスト
-// コード(identifier)順に並べ替え
 $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
 $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $selectedOffice = $offices[0]['id'] ?? 0;
@@ -120,7 +129,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     <script>
         window.yearMonthData = <?= json_encode($years) ?>;
     </script>
-    <script src="../js/cp_edit_head_v2.js" defer></script>
+    <script src="../js/cp_edit_head.js" defer></script>
 </head>
 
 <body>
@@ -135,11 +144,12 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            CP
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">CP
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./cp.php">CP計画</a></li>
+                            <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
+                            <li><a class="dropdown-item" href="../cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -192,7 +202,8 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
                             <i class="bi bi-person-fill"></i>&nbsp;
                             user name さん
                         </a>
@@ -212,21 +223,22 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
-        <?php if (isset($_GET['success']) && $_GET['success'] === '1'):
+        <?php if (isset($_GET['success'])):
             $sy = isset($_GET['year']) ? (int)$_GET['year'] : null;
             $sm = isset($_GET['month']) ? (int)$_GET['month'] : null;
+            $msg = isset($_GET['msg']) ? htmlspecialchars($_GET['msg']) : '登録が完了しました。';
         ?>
             <div id="successAlert" class="alert alert-success alert-dismissible fade show" role="alert">
                 <?php if ($sy && $sm): ?>
-                    <?= htmlspecialchars("{$sy}年度 {$sm}月 を登録しました。") ?>
+                    <?= htmlspecialchars("{$sy}年度 {$sm}月") ?> の<?= $msg ?>
                 <?php else: ?>
-                    登録が完了しました。
+                    <?= $msg ?>
                 <?php endif; ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
 
-        <form id="mainForm" action="./cp_update.php" method="POST">
+        <form id="mainForm" action="cp_update.php" method="POST">
             <div class="row mb-3">
                 <div class="col-md-2">
                     <h4 class="mb-2" id="editTitle">CP 編集</h4>
@@ -235,6 +247,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <label class="form-label mb-1">
                         各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
                     </label><br>
+
                     <div id="monthButtonsContainer">
                         <?php
                         $startMonth = 4;
@@ -242,7 +255,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             $month = ($startMonth + $i - 1) % 12 + 1;
                             $colorClass = 'secondary';
                         ?>
-                            <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
+                            <button type="button" id="monthBtn<?= $month ?>" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
                                 <?= $month ?>月
                             </button>
                         <?php endfor; ?>
@@ -281,7 +294,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <div class="col-md-2">
                         <label>営業所</label>
                         <select id="officeSelect" class="form-select form-select-sm">
-                            <?php foreach ($offices as $office): ?>
+                            <option value="all">全社 (閲覧のみ)</option> <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
                                 </option>
@@ -300,9 +313,13 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
                 <div class="row align-items-end mb-2">
                     <input type="hidden" id="monthlyCpId" name="monthly_cp_id">
+                    <input type="hidden" id="cpStatus" name="status" value="">
+                    <input type="hidden" id="bulkJsonData" name="bulkJsonData">
+                    <input type="hidden" id="hiddenHourlyRate" name="hidden_hourly_rate">
+
                     <div class="col-md-2">
                         <label>賃率</label>
-                        <input type="number" step="1" id="hourlyRate" name="hourly_rate" class="form-control form-control-sm" placeholder="0">
+                        <input type="number" step="1" id="hourlyRate" class="form-control form-control-sm" placeholder="0">
                     </div>
                     <div class="col-md-2">
                         <label>定時間</label>
@@ -318,6 +335,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </div>
                     <div class="col-md-4"></div>
                 </div>
+
                 <div class="row align-items-end mb-2">
                     <div class="col-md-2">
                         <label>正社員</label>
@@ -335,7 +353,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
                 <input type="hidden" name="officeTimeData" id="officeTimeData">
                 <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
-                <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#cpFixModal">確定</button>
+                <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
             </div>
 
             <div class="table-container">
@@ -343,6 +361,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <thead>
                         <tr>
                             <th>項目</th>
+                            <th style="width: 15%;">営業所</th>
                             <th style="width: 30%;">詳細</th>
                             <th style="width: 30%;">備考</th>
                             <th style="width: 150px;">金額（CP）</th>
@@ -350,34 +369,36 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </thead>
                     <tbody>
                         <tr class="table-light">
-                            <td>
+                            <td colspan="5">
                                 <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                     data-bs-target=".l1-revenue-group" aria-expanded="false">
-                                    <i class="bi bi-plus-lg icon-small"></i> </button>
+                                    <i class="bi bi-plus-lg icon-small"></i>
+                                </button>
                                 <strong class="ms-2">収入の部</strong>
+                                <span class="float-end fw-bold" id="total-revenue">0</span>
                             </td>
-                            <td></td>
-                            <td></td>
-                            <td class="text-end fw-bold" id="total-revenue">0</td>
                         </tr>
-
                         <?php foreach ($revenues as $categoryId => $category): ?>
                             <tr class="collapse l1-revenue-group">
-                                <td class="ps-4">
+                                <td class="ps-4" colspan="4">
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                         data-bs-target="#child-rev-<?= $categoryId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
                                     <?= htmlspecialchars($category['name']) ?>
                                 </td>
-                                <td></td>
-                                <td></td>
                                 <td class="text-end fw-bold" id="total-revenue-category-<?= $categoryId ?>">0</td>
                             </tr>
-
                             <?php foreach ($category['items'] as $item): ?>
-                                <tr class="collapse" id="child-rev-<?= $categoryId ?>">
+                                <?php
+                                $revOfficeId = empty($item['office_id']) ? 'common' : $item['office_id'];
+                                $revOfficeName = empty($item['office_name']) ? '共通' : $item['office_name'];
+                                ?>
+                                <tr class="collapse detail-row" id="child-rev-<?= $categoryId ?>" data-office-id="<?= htmlspecialchars($revOfficeId) ?>">
                                     <td></td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border"><?= htmlspecialchars($revOfficeName) ?></span>
+                                    </td>
                                     <td class="ps-5">
                                         <?= htmlspecialchars($item['name']) ?>
                                     </td>
@@ -395,37 +416,44 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                                 </tr>
                             <?php endforeach; ?>
                         <?php endforeach; ?>
+
                         <tr class="table-light">
-                            <td>
+                            <td colspan="5">
                                 <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                     data-bs-target=".l1-expense-group" aria-expanded="false">
-                                    <i class="bi bi-plus-lg icon-small"></i> </button>
+                                    <i class="bi bi-plus-lg icon-small"></i>
+                                </button>
                                 <strong class="ms-2">経費の部</strong>
+                                <span class="float-end fw-bold" id="total-expense">0</span>
                             </td>
-                            <td></td>
-                            <td></td>
-                            <td class="text-end fw-bold" id="total-expense">0</td>
                         </tr>
 
                         <?php foreach ($accounts as $accountId => $account): ?>
                             <tr class="collapse l1-expense-group">
-                                <td class="ps-4">
+                                <td class="ps-4" colspan="4">
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
                                         data-bs-target="#child-<?= $accountId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
                                 </td>
-                                <td></td>
-                                <td></td>
                                 <td class="text-end fw-bold" id="total-account-<?= $accountId ?>">0
                                     <input type="hidden" name="total_account[<?= $accountId ?>]" value="0">
                                 </td>
                             </tr>
 
                             <?php foreach ($account['details'] as $detail): ?>
-                                <tr class="collapse" id="child-<?= $accountId ?>">
+                                <?php
+                                $officeIdStr = empty($detail['office_id']) ? 'common' : $detail['office_id'];
+                                $officeNameDisplay = empty($detail['office_name']) ? '全社共通' : $detail['office_name'];
+                                ?>
+                                <tr class="collapse detail-row" id="child-<?= $accountId ?>" data-office-id="<?= htmlspecialchars($officeIdStr) ?>">
                                     <td></td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border">
+                                            <?= htmlspecialchars($officeNameDisplay) ?>
+                                        </span>
+                                    </td>
                                     <td class="ps-5">
                                         <?= htmlspecialchars($detail['name']) ?>
                                     </td>
@@ -448,7 +476,8 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     </tbody>
                 </table>
             </div>
-            <input type="hidden" name="action_type" id="cpMode" value="update">
+
+            <input type="hidden" name="cpMode" id="cpMode" value="update">
         </form>
 
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
@@ -468,19 +497,19 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
             </div>
         </div>
-        <div class="modal fade" id="cpFixModal" tabindex="-1" aria-labelledby="cpFixModalLabel" aria-hidden="true">
+        <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="cpFixModalLabel">CP確定</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title" id="fixModalLabel">確定の確認</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
                     </div>
                     <div class="modal-body">
-                        この内容でCPを確定して、見通しへ反映します。よろしいですか？
+                        確定するとデータの修正ができなくなります。<br>確定してもよろしいですか？
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                        <button type="button" class="btn btn-primary" id="cpFixConfirmBtn">はい、確定</button>
+                        <button type="button" class="btn btn-success" id="cpFixConfirmBtn">はい、確定する</button>
                     </div>
                 </div>
             </div>

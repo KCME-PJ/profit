@@ -6,7 +6,26 @@ try {
     // フォーム POST データを取得
     $data = $_POST;
 
+    // ★追加: bulkJsonData が存在する場合はデコードしてマージする
+    // cp.php のJSで全ての入力値をまとめて送信しているので、これを優先して使用する
+    if (!empty($_POST['bulkJsonData'])) {
+        $bulkData = json_decode($_POST['bulkJsonData'], true);
+
+        if (is_array($bulkData)) {
+            // 収入データの取得
+            if (isset($bulkData['revenues']) && is_array($bulkData['revenues'])) {
+                $data['revenues'] = $bulkData['revenues'];
+            }
+            // 経費データの取得
+            // (cp.php のJSでは 'accounts' というキーで作成)
+            if (isset($bulkData['accounts']) && is_array($bulkData['accounts'])) {
+                $data['accounts'] = $bulkData['accounts'];
+            }
+        }
+    }
+
     // 登録処理
+    // registerMonthlyCp関数は $data['revenues'], $data['accounts'] を参照する仕様
     registerMonthlyCp($data);
 
     // 成功後に年度・月を付けてリダイレクト（選択を保持）

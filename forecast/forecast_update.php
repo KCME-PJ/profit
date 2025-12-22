@@ -5,26 +5,45 @@ require_once '../includes/forecast_functions.php';
 $actionType = $_POST['action_type'] ?? 'update';
 $year = (int)($_POST['year'] ?? 0);
 $month = (int)($_POST['month'] ?? 0);
-
 $officeTimeData = $_POST['officeTimeData'] ?? [];
 if (!is_array($officeTimeData)) {
     // JSON文字列の場合にデコードを試みる
     $officeTimeData = json_decode($officeTimeData, true) ?? [];
 }
 
-// ★ 修正: 経費(amounts)、収入(revenues)、賃率(hourly_rate) を正しく取得
+// ----------------------------------------------------------------
+// bulk_json_data (一括送信データ) の受け取り処理
+// ----------------------------------------------------------------
 $detailAmounts = $_POST['amounts'] ?? [];
 $revenueAmounts = $_POST['revenues'] ?? [];
-$hourly_rate = $_POST['hourly_rate'] ?? 0;
 
+if (!empty($_POST['bulk_json_data'])) {
+    $bulkData = json_decode($_POST['bulk_json_data'], true);
+    if (is_array($bulkData)) {
+        // 収入データ
+        if (isset($bulkData['revenues']) && is_array($bulkData['revenues'])) {
+            $revenueAmounts = $bulkData['revenues'];
+        }
+        // 経費データ
+        if (isset($bulkData['amounts']) && is_array($bulkData['amounts'])) {
+            $detailAmounts = $bulkData['amounts'];
+        }
+    }
+}
+// ----------------------------------------------------------------
+
+// 隠しフィールド (hidden_hourly_rate) から値を受け取る
+$hourly_rate_input = $_POST['hidden_hourly_rate'] ?? '';
+
+// 空文字なら null、値があれば float に変換
+$hourly_rate = ($hourly_rate_input !== '') ? (float)$hourly_rate_input : null;
 $monthlyForecastId = $_POST['monthly_forecast_id'] ?? null;
-
 
 $dbh = getDb();
 $dbh->beginTransaction();
 
 try {
-    // ★ 修正: DB関数に渡す $data 配列を正しく構築
+    // DB関数に渡す $data 配列
     $data = [
         'monthly_forecast_id' => $monthlyForecastId,
         'year' => $year,

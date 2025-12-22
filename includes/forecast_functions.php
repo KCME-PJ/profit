@@ -17,19 +17,28 @@ function updateMonthlyForecast(array $data, PDO $dbh)
     $officeTimeData = $data['officeTimeData'] ?? [];
     $amounts = $data['amounts'] ?? [];
     $revenues = $data['revenues'] ?? [];
-    $hourly_rate = (float)($data['hourly_rate'] ?? 0);
 
     // ----------------------------
     // 確定ステータスのチェック
     // ----------------------------
-    $stmtStatusCheck = $dbh->prepare("SELECT status FROM monthly_forecast WHERE id = ?");
+    $stmtStatusCheck = $dbh->prepare("SELECT status, hourly_rate FROM monthly_forecast WHERE id = ?");
     $stmtStatusCheck->execute([$monthly_forecast_id]);
-    $currentStatus = $stmtStatusCheck->fetchColumn();
+    $currentData = $stmtStatusCheck->fetch(PDO::FETCH_ASSOC);
 
-    if ($currentStatus === 'fixed') {
+    if (!$currentData) {
+        throw new Exception("対象のデータが見つかりません。");
+    }
+    if (($currentData['status'] ?? '') === 'fixed') {
         throw new Exception("この見通しはすでに確定済みで、修正できません。");
     }
-    // ----------------------------
+
+    // ★修正ポイント1: 賃率の決定ロジック
+    // 入力値が存在すればそれを使い、なければ(disabled等)既存の値を維持する
+    if (isset($data['hourly_rate']) && $data['hourly_rate'] !== '') {
+        $hourly_rate = (float)$data['hourly_rate'];
+    } else {
+        $hourly_rate = (float)$currentData['hourly_rate'];
+    }
 
     try {
         // ----------------------------
@@ -189,10 +198,14 @@ function confirmMonthlyForecast(array $data, PDO $dbh)
     if (!$monthly_forecast_id) {
         throw new Exception("monthly_forecast_id が存在しません。");
     }
+
+    // 更新処理を呼び出し（ここでDBのhourly_rateが正しくセットされる）
     updateMonthlyForecast($data, $dbh);
+
     try {
         $stmt = $dbh->prepare("UPDATE monthly_forecast SET status = 'fixed' WHERE id = ?");
         $stmt->execute([$monthly_forecast_id]);
+
         reflectToPlan($monthly_forecast_id, $dbh);
     } catch (Exception $e) {
         throw new Exception("見通しの確定中にエラーが発生しました: " . $e->getMessage());
@@ -204,7 +217,8 @@ function confirmMonthlyForecast(array $data, PDO $dbh)
  */
 function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
 {
-    $stmt = $dbh->prepare("SELECT year, month, hourly_rate FROM monthly_forecast WHERE id = ?");
+    // 1. コピー元の年・月を取得
+    $stmt = $dbh->prepare("SELECT year, month FROM monthly_forecast WHERE id = ?");
     $stmt->execute([$monthly_forecast_id]);
     $forecastInfo = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -213,24 +227,30 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
     }
     $year = $forecastInfo['year'];
     $month = $forecastInfo['month'];
-    $hourly_rate = $forecastInfo['hourly_rate'];
 
     try {
+        // 2. 既存の Plan があれば削除 (ID再生成のため)
         $planId = getMonthlyPlanId($year, $month, $dbh);
         if ($planId) {
             $dbh->prepare("DELETE FROM monthly_plan WHERE id = ?")->execute([$planId]);
             $planId = null;
         }
+
+        // 3. ★修正ポイント2: 親レコードのコピー (INSERT ... SELECT を使用して確実に値をコピー)
         $stmt = $dbh->prepare("
             INSERT INTO monthly_plan (year, month, hourly_rate, status)
-            VALUES (?, ?, ?, 'draft')
+            SELECT year, month, hourly_rate, 'draft'
+            FROM monthly_forecast
+            WHERE id = ?
         ");
-        $stmt->execute([$year, $month, $hourly_rate]);
+        $stmt->execute([$monthly_forecast_id]);
+
         $planId = $dbh->lastInsertId();
         if (!$planId) {
             throw new Exception("予定(Plan)の親レコードの挿入に失敗しました。");
         }
 
+        // 4. 子データのコピー (時間データ)
         $stmtCopyTime = $dbh->prepare("
             INSERT INTO monthly_plan_time 
             (monthly_plan_id, office_id, standard_hours, overtime_hours, transferred_hours, fulltime_count, contract_count, dispatch_count)
@@ -241,6 +261,7 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
         ");
         $stmtCopyTime->execute([$planId, $monthly_forecast_id]);
 
+        // 5. 子データのコピー (経費詳細)
         $stmtCopyDetails = $dbh->prepare("
             INSERT INTO monthly_plan_details (plan_id, detail_id, amount)
             SELECT ?, detail_id, amount
@@ -249,6 +270,7 @@ function reflectToPlan(int $monthly_forecast_id, PDO $dbh)
         ");
         $stmtCopyDetails->execute([$planId, $monthly_forecast_id]);
 
+        // 6. 子データのコピー (収入詳細)
         $stmtCopyRevenues = $dbh->prepare("
             INSERT INTO monthly_plan_revenues (plan_id, revenue_item_id, amount)
             SELECT ?, revenue_item_id, amount

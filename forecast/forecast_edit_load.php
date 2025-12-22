@@ -25,7 +25,7 @@ try {
         'monthly_forecast_id' => 0,
         'offices' => [], // 営業所ごとの時間データ格納キー
         'details' => [],
-        'revenues' => [], // ★ 収入データ用に追加
+        'revenues' => [],
         'status' => 'none',
         'common_hourly_rate' => 0
     ];
@@ -39,7 +39,7 @@ try {
         $common_hourly_rate = (float)($forecast['hourly_rate'] ?? 0);
         $response['common_hourly_rate'] = $common_hourly_rate;
 
-        // 2. 営業所ごとの時間・人数データを取得 (変更なし)
+        // 2. 営業所ごとの時間・人数データを取得
         $timeStmt = $dbh->prepare("SELECT * FROM monthly_forecast_time WHERE monthly_forecast_id = ?");
         $timeStmt->execute([$forecastId]);
 
@@ -56,7 +56,7 @@ try {
             ];
         }
 
-        // 3. 詳細データ（経費）の取得 (変更なし)
+        // 3. 詳細データ（経費）の取得
         $detailStmt = $dbh->prepare("
             SELECT detail_id, amount
             FROM monthly_forecast_details
@@ -66,7 +66,7 @@ try {
         $detailsData = $detailStmt->fetchAll(PDO::FETCH_ASSOC);
         $response['details'] = array_column($detailsData, 'amount', 'detail_id');
 
-        // ★ 修正点: 4. 収入データ (revenue_item_id ⇒ amount) の取得 (ここから追加)
+        // 4. 収入データ
         $revenueStmt = $dbh->prepare("
             SELECT revenue_item_id, amount
             FROM monthly_forecast_revenues
@@ -75,10 +75,8 @@ try {
         $revenueStmt->execute(['forecast_id' => $forecastId]);
         $revenueData = $revenueStmt->fetchAll(PDO::FETCH_ASSOC);
         $response['revenues'] = array_column($revenueData, 'amount', 'revenue_item_id');
-        // (ここまで追加)
-
     } else {
-        // (データが存在しない場合の処理 - 変更なし)
+        // データが存在しない場合
         $response['status'] = 'none';
         $response['common_hourly_rate'] = 0;
     }

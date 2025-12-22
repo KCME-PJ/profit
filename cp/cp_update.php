@@ -2,87 +2,72 @@
 require_once '../includes/database.php';
 require_once '../includes/cp_functions.php';
 
-$dbh = getDb();
+$actionType = $_POST['cpMode'] ?? 'update';
+$year = (int)($_POST['year'] ?? 0);
+$month = (int)($_POST['month'] ?? 0);
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    exit("不正なアクセスです。");
+$officeTimeData = $_POST['officeTimeData'] ?? [];
+if (!is_array($officeTimeData)) {
+    // JSON文字列の場合にデコードを試みる
+    $officeTimeData = json_decode($officeTimeData, true) ?? [];
 }
+
+$detailAmounts = $_POST['amounts'] ?? [];
+$revenueAmounts = $_POST['revenues'] ?? [];
+
+// bulkJsonData の受け取り
+if (!empty($_POST['bulkJsonData'])) {
+    $bulkData = json_decode($_POST['bulkJsonData'], true);
+    if (is_array($bulkData)) {
+        if (isset($bulkData['revenues']) && is_array($bulkData['revenues'])) {
+            $revenueAmounts = $bulkData['revenues'];
+        }
+        if (isset($bulkData['amounts']) && is_array($bulkData['amounts'])) {
+            $detailAmounts = $bulkData['amounts'];
+        }
+    }
+}
+
+// ★★★ 修正: 隠しフィールド (hidden_hourly_rate) から値を受け取る ★★★
+$hourly_rate_input = $_POST['hidden_hourly_rate'] ?? '';
+
+// 空文字なら null、値があれば float に変換
+$hourly_rate = ($hourly_rate_input !== '') ? (float)$hourly_rate_input : null;
+
+$monthlyCpId = $_POST['monthly_cp_id'] ?? null;
+
+$dbh = getDb();
+$dbh->beginTransaction();
 
 try {
-    $actionType = $_POST['action_type'] ?? 'update';
-    $monthly_cp_id = $_POST['monthly_cp_id'] ?? null;
-
-    if (!$monthly_cp_id) {
-        throw new Exception('monthly_cp_id が存在しません。');
-    }
-
-    // officeTimeData を配列化（営業所ごとの時間・人数データのみ）
-    $officeTimeData = json_decode($_POST['officeTimeData'] ?? '[]', true);
-    if (!is_array($officeTimeData)) {
-        throw new Exception('officeTimeData が存在しません。');
-    }
-
-    // 勘定科目明細
-    $detailData = [
-        'detail_ids' => $_POST['detail_ids'] ?? [],
-        'amounts' => $_POST['amounts'] ?? []
+    $data = [
+        'monthly_cp_id' => $monthlyCpId,
+        'year' => $year,
+        'month' => $month,
+        'hourly_rate' => $hourly_rate, // nullの場合は function 側で既存値を維持
+        'officeTimeData' => $officeTimeData,
+        'amounts' => $detailAmounts,
+        'revenues' => $revenueAmounts
     ];
 
-    if ($actionType === 'update') {
-        // --- CP更新処理 ---
-        $dataForUpdate = [
-            'monthly_cp_id' => $monthly_cp_id,
-            'officeTimeData' => $officeTimeData,
-            'detail_ids' => $detailData['detail_ids'],
-            'amounts' => $detailData['amounts'],
-            'hourly_rate' => $_POST['hourly_rate'] ?? 0, // ★ 修正: 追加
-            'revenues' => $_POST['revenues'] ?? []      // ★ 修正: 追加
-        ];
-        updateMonthlyCp($dataForUpdate, $dbh);
-        $message = "CPの更新が完了しました！";
-    } elseif ($actionType === 'fixed') {
-        // --- CP確定処理（update + status固定 + forecast反映） ---
-        $dataForFix = [
-            'monthly_cp_id' => $monthly_cp_id,
-            'officeTimeData' => $officeTimeData,
-            'detail_ids' => $detailData['detail_ids'],
-            'amounts' => $detailData['amounts'],
-            'hourly_rate' => $_POST['hourly_rate'] ?? 0, // ★ 修正: 追加
-            'revenues' => $_POST['revenues'] ?? []      // ★ 修正: 追加
-        ];
-        confirmMonthlyCp($dataForFix, $dbh);
-        $message = "CPの確定が完了しました！";
+    if ($actionType === 'fixed') {
+        confirmMonthlyCp($data, $dbh);
+        $message = "CPの確定・見通しへの反映が完了しました。";
     } else {
-        throw new Exception("不正な操作です。");
+        updateMonthlyCp($data, $dbh);
+        $message = "CPの更新が完了しました。";
     }
 
-?>
-    <!DOCTYPE html>
-    <html lang="ja">
+    $dbh->commit();
 
-    <head>
-        <meta charset="UTF-8">
-        <title>完了</title>
-        <meta http-equiv="refresh" content="3;url=cp_edit.php">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-
-    <body class="bg-light">
-        <div class="container mt-5">
-            <div class="alert alert-success shadow rounded p-4 text-center">
-                <h4 class="alert-heading mb-3"><?= htmlspecialchars($message) ?></h4>
-                <p class="mb-3">3秒後に自動で編集ページに戻ります。</p>
-                <a href="cp_edit.php" class="btn btn-primary">すぐに戻る</a>
-            </div>
-        </div>
-    </body>
-
-    </html>
-<?php
+    // 成功リダイレクト
+    $redirectUrl = "cp_edit.php?success=1&year={$year}&month={$month}&msg=" . urlencode($message);
+    header("Location: {$redirectUrl}");
+    exit;
 } catch (Exception $e) {
-    if ($dbh->inTransaction()) $dbh->rollBack();
-    $error = urlencode($e->getMessage());
-    header("Location: cp_edit.php?error={$error}");
+    $dbh->rollBack();
+    // エラーリダイレクト
+    $redirectUrl = "cp_edit.php?error=" . urlencode("登録エラー: " . $e->getMessage()) . "&year={$year}&month={$month}";
+    header("Location: {$redirectUrl}");
     exit;
 }
-?>
