@@ -1,6 +1,3 @@
-/**
- * cp_edit_body.js (修正版: 賃率隠しフィールド対応)
- */
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('mainForm');
     const yearSelect = document.getElementById('yearSelect');
@@ -10,6 +7,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const officeSelect = document.getElementById('officeSelect');
     const hiddenTime = document.getElementById('officeTimeData');
     const hourlyRateInput = document.getElementById('hourlyRate');
+
+    // 総時間表示用エレメント & 賃率隠しフィールド
+    const totalHoursInput = document.getElementById('totalHours');
+    const hiddenHourlyRateInput = document.getElementById('hiddenHourlyRate');
 
     // ボタン
     const submitBtnUpdate = document.querySelector('.register-button1'); // 修正ボタン
@@ -27,6 +28,15 @@ document.addEventListener('DOMContentLoaded', function () {
     let officeTimeDataLocal = {};
     let currentOfficeId = officeSelect ? officeSelect.value : null;
     let initialFormData = ""; // 変更検知用
+
+    // --- ヘルパー関数: 小数点誤差を解消する (小数点第2位まで) ---
+    function roundTo2(num) {
+        if (num === '' || num === null || num === undefined) return '';
+        const f = parseFloat(num);
+        if (isNaN(f)) return '';
+        // 100倍して四捨五入し、100で割ることで小数点第2位までに丸める
+        return Math.round(f * 100) / 100;
+    }
 
     // 1. 初期ロード
     try {
@@ -52,6 +62,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'officeSelect',
             'hourlyRate',
             'hiddenHourlyRate', // 変更検知対象外
+            'totalHours',       // 自動計算項目のため除外
             'standardHours',
             'overtimeHours',
             'transferred_hours',
@@ -120,7 +131,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     officeTimeDataLocal[oid][key] = '';
                 } else {
                     if (floatKeys.includes(key)) {
-                        officeTimeDataLocal[oid][key] = parseFloat(val) || 0;
+                        // 初期化時にも丸めておく
+                        officeTimeDataLocal[oid][key] = roundTo2(val);
                     } else {
                         officeTimeDataLocal[oid][key] = parseInt(val) || 0;
                     }
@@ -189,7 +201,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (input.value === '') {
                     data[key] = '';
                 } else {
-                    data[key] = key.includes('hours') ? parseFloat(input.value) || 0 : parseInt(input.value) || 0;
+                    // 入力値を保存する際も丸めておく（計算誤差の蓄積防止）
+                    let val = parseFloat(input.value) || 0;
+                    if (key.includes('hours')) {
+                        data[key] = roundTo2(val);
+                    } else {
+                        data[key] = parseInt(input.value) || 0;
+                    }
                 }
             }
         }
@@ -250,7 +268,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
             for (const key in timeFields) {
                 if (timeFields[key]) {
-                    timeFields[key].value = totals[key];
+                    // 時間系(hours)の場合は丸め処理を行う
+                    if (key.includes('hours')) {
+                        timeFields[key].value = roundTo2(totals[key]);
+                    } else {
+                        timeFields[key].value = totals[key];
+                    }
+
                     timeFields[key].disabled = true;
                     timeFields[key].classList.add('bg-light');
                 }
@@ -262,6 +286,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 hourlyRateInput.disabled = true;
                 hourlyRateInput.classList.add('bg-light');
+
+                // 同期
+                if (hiddenHourlyRateInput) {
+                    hiddenHourlyRateInput.value = hourlyRateInput.value;
+                }
             }
 
             updateTotals();
@@ -274,7 +303,11 @@ document.addEventListener('DOMContentLoaded', function () {
         for (const key in timeFields) {
             const val = data[key];
             if (timeFields[key]) {
-                timeFields[key].value = (val !== undefined && val !== null && val !== '') ? val : '';
+                // 値をセットする前に丸める
+                const rawVal = (val !== undefined && val !== null && val !== '') ? val : '';
+                // hoursが含まれるキーなら丸め処理、それ以外(人数など)はそのまま
+                timeFields[key].value = key.includes('hours') ? roundTo2(rawVal) : rawVal;
+
                 timeFields[key].disabled = false;
                 timeFields[key].classList.remove('bg-light');
             }
@@ -285,6 +318,11 @@ document.addEventListener('DOMContentLoaded', function () {
             hourlyRateInput.value = (rateVal !== undefined && rateVal !== null && rateVal !== '') ? rateVal : '';
             hourlyRateInput.disabled = false;
             hourlyRateInput.classList.remove('bg-light');
+
+            // 同期
+            if (hiddenHourlyRateInput) {
+                hiddenHourlyRateInput.value = hourlyRateInput.value;
+            }
         }
 
         updateTotals();
@@ -302,20 +340,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
         captureCurrentOfficeTime(currentOfficeId);
 
-        // ★★★ 修正: 画面の賃率の値を、隠しフィールドにコピーする ★★★
+        // 画面の賃率の値を、隠しフィールドにコピーする
         if (hourlyRateInput) {
             const hiddenRate = document.getElementById('hiddenHourlyRate');
             if (hiddenRate) {
                 hiddenRate.value = hourlyRateInput.value;
             }
         }
-        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
         if (hiddenTime) {
             hiddenTime.value = JSON.stringify(officeTimeDataLocal);
         }
 
-        // 1000件問題対応
+        // 1,000件問題対応
         const bulkData = {
             revenues: {},
             amounts: {}
@@ -341,6 +378,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function resetInputFields() {
         if (hourlyRateInput) hourlyRateInput.value = '';
+        if (totalHoursInput) totalHoursInput.value = ''; // リセット
+        if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = ''; // リセット
+
         for (const key in timeFields) {
             if (timeFields[key]) timeFields[key].value = '';
         }
@@ -380,6 +420,9 @@ document.addEventListener('DOMContentLoaded', function () {
             renderOfficeToDom(currentOfficeId);
             if (currentOfficeId !== 'all' && currentRate !== '' && hourlyRateInput) {
                 hourlyRateInput.value = currentRate;
+                // 同期
+                if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = currentRate;
+
                 if (!officeTimeDataLocal[currentOfficeId]) {
                     officeTimeDataLocal[currentOfficeId] = {};
                 }
@@ -404,6 +447,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (currentOfficeId === 'all') {
+            // 全社モード: 全データの合計
             for (const officeId in officeTimeDataLocal) {
                 const data = officeTimeDataLocal[officeId];
                 if (data) {
@@ -414,6 +458,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         } else {
+            // 個別モード: 現在の入力値 or データから計算
             if (currentOfficeId) {
                 captureCurrentOfficeTime(currentOfficeId);
                 const data = officeTimeDataLocal[currentOfficeId];
@@ -424,6 +469,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     totalHours += (standard + overtime + transferred);
                 }
             }
+        }
+
+        // 総時間のUI反映 (小数点2桁まで)
+        if (totalHoursInput) {
+            totalHoursInput.value = totalHours.toFixed(2);
         }
 
         totalLaborCost = Math.round(totalHours * hourlyRate);
@@ -491,6 +541,11 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('mainForm').addEventListener('input', function (e) {
         if (e.target.matches('.detail-input, .revenue-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')) {
             if (e.target === hourlyRateInput) {
+                // 入力時に隠しフィールドへ同期
+                if (hiddenHourlyRateInput) {
+                    hiddenHourlyRateInput.value = hourlyRateInput.value;
+                }
+
                 const v = hourlyRateInput.value;
                 const rate = (v === '' ? '' : parseFloat(v));
                 for (const oid in officeTimeDataLocal) {
@@ -530,6 +585,22 @@ document.addEventListener('DOMContentLoaded', function () {
                     // ステータスをhiddenにセット
                     if (document.getElementById('cpStatus')) {
                         document.getElementById('cpStatus').value = data.status ?? '';
+                    }
+
+                    // 共通賃率をロードしてinputとhiddenに即座にセットする
+                    const loadedRate = data.common_hourly_rate || '';
+                    if (hourlyRateInput) {
+                        hourlyRateInput.value = (loadedRate !== 0 && loadedRate !== '') ? loadedRate : '';
+                    }
+                    if (hiddenHourlyRateInput) {
+                        hiddenHourlyRateInput.value = hourlyRateInput.value;
+                    }
+
+                    // officeTimeDataLocalが空、あるいは賃率を持っていない場合にセットしておく
+                    for (const oid in officeTimeDataLocal) {
+                        if (officeTimeDataLocal[oid].hourly_rate === undefined || officeTimeDataLocal[oid].hourly_rate === '') {
+                            officeTimeDataLocal[oid].hourly_rate = loadedRate ? parseFloat(loadedRate) : '';
+                        }
                     }
 
                     renderOfficeToDom(currentOfficeId);

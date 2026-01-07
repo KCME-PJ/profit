@@ -325,7 +325,11 @@ try {
                         <label>時間移動</label>
                         <input type="number" step="0.01" class="form-control form-control-sm time-input" id="transferredHours" data-field="transferred_hours" placeholder="0">
                     </div>
-                    <div class="col-md-4"></div>
+                    <div class="col-md-2">
+                        <label>総時間</label>
+                        <input type="number" step="0.01" id="totalHours" class="form-control form-control-sm" readonly placeholder="0" style="background-color: #e9ecef; font-weight: bold;">
+                    </div>
+                    <div class="col-md-2"></div>
                 </div>
                 <div class="row align-items-end mb-2">
                     <div class="col-md-2">
@@ -447,7 +451,7 @@ try {
                                         <?= htmlspecialchars($detail['name']) ?>
                                     </td>
                                     <td>
-                                        <small class="text-muted"><?= htmlspecialchars($detail['note']) ?></small>
+                                        <?= htmlspecialchars($detail['note']) ?>
                                     </td>
                                     <td class="details-cell">
                                         <input type="number" step="1"
@@ -480,6 +484,9 @@ try {
             const hourlyRateInput = document.getElementById('hourlyRate');
             const registerButton = document.querySelector('.register-button');
 
+            // 総時間表示用エレメント
+            const totalHoursInput = document.getElementById('totalHours');
+
             // 時間・人数入力フィールド
             const timeFields = {
                 standard_hours: document.getElementById('standardHours'),
@@ -495,6 +502,15 @@ try {
 
             let currentOfficeId = officeSelect.value;
 
+            // --- ヘルパー関数: 小数点誤差を解消する (小数点第2位まで) ---
+            function roundTo2(num) {
+                if (num === '' || num === null || num === undefined) return '';
+                const f = parseFloat(num);
+                if (isNaN(f)) return '';
+                // 100倍して四捨五入し、100で割ることで小数点第2位までに丸める
+                return Math.round(f * 100) / 100;
+            }
+
             // --- 営業所切り替え時のデータ退避 ---
             function captureCurrentOfficeTime(oid) {
                 // 「全社」モードのときはデータを保存しない（集計値なので）
@@ -506,7 +522,12 @@ try {
                 for (const key in timeFields) {
                     const input = timeFields[key];
                     if (input) {
-                        data[key] = input.value;
+                        // 保存時も念のため丸め処理を通す（時間系のみ）
+                        if (key.includes('hours')) {
+                            data[key] = roundTo2(input.value);
+                        } else {
+                            data[key] = input.value;
+                        }
                     }
                 }
                 officeTimeData[oid] = data;
@@ -523,7 +544,7 @@ try {
                     }
                 }
 
-                // ★修正: 「全社」選択時の集計処理
+                // 「全社」選択時の集計処理
                 if (oid === 'all') {
                     // 全営業所のデータを合計
                     const totals = {
@@ -550,7 +571,12 @@ try {
                     for (const key in totals) {
                         const input = timeFields[key];
                         if (input) {
-                            input.value = totals[key];
+                            // 時間系の場合は丸め処理
+                            if (key.includes('hours')) {
+                                input.value = roundTo2(totals[key]);
+                            } else {
+                                input.value = totals[key];
+                            }
                             input.disabled = true; // 全社モードでは編集不可
                         }
                     }
@@ -563,7 +589,13 @@ try {
                     for (const key in timeFields) {
                         const input = timeFields[key];
                         if (input) {
-                            input.value = data[key] !== undefined ? data[key] : '';
+                            const val = data[key] !== undefined ? data[key] : '';
+                            // 復元時も丸め処理を通してセット
+                            if (key.includes('hours')) {
+                                input.value = roundTo2(val);
+                            } else {
+                                input.value = val;
+                            }
                         }
                     }
                 }
@@ -578,7 +610,7 @@ try {
                     const rowOfficeId = row.getAttribute('data-office-id');
                     const inputs = row.querySelectorAll('input');
 
-                    // ★修正: 「全社」選択時はすべて表示
+                    // 「全社」選択時はすべて表示
                     if (selectedOfficeId === 'all') {
                         row.style.display = '';
                         // 全社モードのときは明細入力も無効化する（誤入力防止）
@@ -590,14 +622,12 @@ try {
                         inputs.forEach(input => input.disabled = false);
                     } else {
                         row.style.display = 'none';
-                        // サーバーへは bulkJsonData で送るため、ここでは計算対象外にするためだけの制御で良い
-                        // UI上は隠れているので操作不可
                     }
                 });
 
                 calculate();
 
-                // 全社モードなら登録ボタンを無効化（あるいは警告付きにする）
+                // 全社モードなら登録ボタンを無効化
                 if (selectedOfficeId === 'all') {
                     registerButton.disabled = true;
                     registerButton.textContent = '全社モードでは登録できません';
@@ -616,8 +646,14 @@ try {
                 const trn = parseFloat(timeFields.transferred_hours.value) || 0;
                 currentHours = std + ovt + trn;
 
+                // 総時間を画面に反映 (丸め処理付き)
+                if (totalHoursInput) {
+                    totalHoursInput.value = roundTo2(currentHours);
+                }
+
                 const hourlyRate = parseFloat(hourlyRateInput.value) || 0;
-                const laborCost = Math.round(currentHours * hourlyRate);
+                // 総時間を丸めてから賃率を掛ける
+                const laborCost = Math.round(roundTo2(currentHours) * hourlyRate);
 
                 document.getElementById('info-labor-cost').textContent = laborCost.toLocaleString();
 
@@ -708,7 +744,7 @@ try {
                 window.location.href = url.toString();
             };
 
-            // --- 送信時処理 (修正版) ---
+            // --- 送信時処理 ---
             form.addEventListener("submit", function(e) {
                 // 送信前に現在の営業所データを保存
                 captureCurrentOfficeTime(currentOfficeId);
@@ -729,9 +765,7 @@ try {
                 }
                 document.getElementById("officeTimeData").value = JSON.stringify(officeTimeData);
 
-                // ---------------------------------------------------------
-                // ★追加: 収入・経費データをJSONにまとめて hidden にセット
-                // ---------------------------------------------------------
+                // 収入・経費データをJSONにまとめて hidden にセット
                 const bulkData = {
                     revenues: {},
                     accounts: {}

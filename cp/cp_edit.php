@@ -333,7 +333,11 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                         <label>時間移動</label>
                         <input type="number" step="0.01" id="transferredHours" class="form-control form-control-sm" data-field="transferred_hours" placeholder="0">
                     </div>
-                    <div class="col-md-4"></div>
+                    <div class="col-md-2">
+                        <label>総時間</label>
+                        <input type="number" step="0.01" id="totalHours" class="form-control form-control-sm" readonly placeholder="0" style="background-color: #e9ecef; font-weight: bold;">
+                    </div>
+                    <div class="col-md-2"></div>
                 </div>
 
                 <div class="row align-items-end mb-2">
