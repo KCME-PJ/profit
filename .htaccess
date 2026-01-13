@@ -1,0 +1,17 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. リクエストされたのがディレクトリ(-d)であれば
+    RewriteCond %{REQUEST_FILENAME} -d
+    # 2. かつ、そのフォルダ内に index.php が存在しない(!-f)場合
+    RewriteCond %{REQUEST_FILENAME}/index.php !-f
+    # 3. かつ、そのフォルダ内に index.html が存在しない(!-f)場合
+    RewriteCond %{REQUEST_FILENAME}/index.html !-f
+    
+    # 上記すべてに当てはまるなら 404エラー(R=404)を返す
+    RewriteRule ^ - [R=404,L]
+</IfModule>
+
+ErrorDocument 404 /profit/404.html
