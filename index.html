@@ -12,30 +12,33 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Interフォントの読み込み */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8f9fa;
-            /* Bootstrap bg-light */
         }
 
-        /* グラフのコンテナの高さ (2x2レイアウトでも維持) */
+        /* グラフの高さを指定 */
         .chart-container {
             position: relative;
-            height: 340px;
+            height: 220px;
+            width: 100%;
         }
 
-        /* KPIカードのフォントサイズ */
         .kpi-value {
-            font-size: 1.5rem;
-            /* 2.25rem から変更 */
+            font-size: 1.1rem;
             font-weight: 600;
-            /* semibold */
         }
 
-        /* 読み込み中オーバーレイのスタイル */
+        .kpi-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         #loading-overlay {
             position: fixed;
             top: 0;
@@ -43,9 +46,13 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.5);
-            /* 半透明の黒 */
             z-index: 1050;
-            /* Bootstrapのモーダルより少し手前 */
+        }
+
+        .btn-group-xs>.btn,
+        .btn-group-sm>.btn {
+            padding: .25rem .5rem;
+            font-size: .75rem;
         }
     </style>
 </head>
@@ -68,86 +75,12 @@
                 </ul>
             </div>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
-                aria-label="Toggle navigation">
+                data-bs-target="#navbarSupportedContent">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            CP
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./cp/cp.php">CP計画</a></li>
-                            <li><a class="dropdown-item" href="./cp/cp_edit.php">CP編集</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            見通し
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./forecast/forecast_edit.php">見通し編集</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            予定
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./plan/plan_edit.php">予定編集</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            月末見込み
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./outlook/outlook_edit.php">月末見込み編集</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            概算
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./result/result_edit.php">概算実績編集</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            勘定科目設定
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./account/account.php">勘定科目登録</a></li>
-                            <li><a class="dropdown-item" href="./account/account_list.php">勘定科目リスト</a></li>
-                            <li><a class="dropdown-item" href="./details/detail.php">詳細登録</a></li>
-                            <li><a class="dropdown-item" href="./details/detail_list.php">詳細リスト</a></li>
-                            <li><a class="dropdown-item" href="./offices/office.php">係登録</a></li>
-                            <li><a class="dropdown-item" href="./offices/office_list.php">係リスト</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-            <div class="navbar-nav ms-auto">
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
-                        </ul>
-                    </li>
+                    <li class="nav-item"><a class="nav-link" href="./cp/cp_edit.php">CP編集</a></li>
                 </ul>
             </div>
         </div>
@@ -156,7 +89,7 @@
     <div class="container-fluid p-4">
 
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-body p-4">
+            <div class="card-body p-3">
                 <div class="row g-3 align-items-end">
                     <div class="col-lg-2 col-md-4 col-sm-6">
                         <label for="base-data" class="form-label small fw-medium">基準データ</label>
@@ -176,13 +109,12 @@
                             <option value="plan">予定 (Plan)</option>
                             <option value="cp">CP</option>
                             <option value="previous_year_result">前年実績</option>
-
                         </select>
                     </div>
 
                     <div class="col-lg-2 col-md-4 col-sm-6">
                         <label for="year-select" class="form-label small fw-medium">対象年度</label>
-                        <select id="year-select" name="year-select" class="form-select form-select-sm">
+                        <select id="year-select" class="form-select form-select-sm">
                             <option value="">読込中...</option>
                         </select>
                     </div>
@@ -212,101 +144,138 @@
             </div>
         </div>
 
-        <div class="row g-4 mb-4">
-            <div class="col-lg col-md-6">
+        <div class="row g-3 mb-4">
+            <div class="col-lg-2 col-md-4 col-6">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h6 class="text-muted small text-truncate" id="kpi-title-1">差引収益（通期）</h6>
-                        <p class="kpi-value text-dark mb-1" id="kpi-gross-profit">-</p>
-                        <p class="small text-muted mb-0" id="kpi-gross-profit-diff">vs 比較対象 (-)</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h6 class="text-muted small text-truncate" id="kpi-title-revenue">収入合計（通期）</h6>
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-revenue">収入合計</h6>
                         <p class="kpi-value text-dark mb-1" id="kpi-revenue-total">-</p>
-                        <p class="small text-muted mb-0" id="kpi-revenue-total-diff">vs 比較対象 (-)</p>
+                        <p class="small text-muted mb-0" id="kpi-revenue-total-diff">-</p>
                     </div>
                 </div>
             </div>
-            <div class="col-lg col-md-6">
+            <div class="col-lg-2 col-md-4 col-6">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h6 class="text-muted small text-truncate" id="kpi-title-2">経費合計（通期）</h6>
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-expense">経費合計 (除労務費)</h6>
                         <p class="kpi-value text-dark mb-1" id="kpi-expense-total">-</p>
-                        <p class="small text-muted mb-0" id="kpi-expense-total-diff">vs 比較対象 (-)</p>
+                        <p class="small text-muted mb-0" id="kpi-expense-total-diff">-</p>
                     </div>
                 </div>
             </div>
-            <div class="col-lg col-md-6">
+            <div class="col-lg-2 col-md-4 col-6">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h6 class="text-muted small text-truncate" id="kpi-title-3">労務費合計（通期）</h6>
-                        <p class="kpi-value text-dark mb-1" id="kpi-labor-cost">-</p>
-                        <p class="small text-muted mb-0" id="kpi-labor-cost-diff">vs 比較対象 (-)</p>
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-gross">差引収益</h6>
+                        <p class="kpi-value text-dark mb-1" id="kpi-gross-profit">-</p>
+                        <p class="small text-muted mb-0" id="kpi-gross-profit-diff">-</p>
                     </div>
                 </div>
             </div>
-            <div class="col-lg col-md-6">
+            <div class="col-lg-2 col-md-4 col-6">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h6 class="text-muted small text-truncate" id="kpi-title-4">総時間（通期）</h6>
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-hours">総時間</h6>
                         <p class="kpi-value text-dark mb-1" id="kpi-total-hours">-</p>
-                        <p class="small text-muted mb-0" id="kpi-total-hours-diff">vs 比較対象 (-)</p>
+                        <p class="small text-muted mb-0" id="kpi-total-hours-diff">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-4 col-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-hourly">時間当たり採算</h6>
+                        <p class="kpi-value text-dark mb-1" id="kpi-hourly-profit">-</p>
+                        <p class="small text-muted mb-0" id="kpi-hourly-profit-diff">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-4 col-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body p-3">
+                        <h6 class="kpi-label" id="kpi-title-pretax">税引前利益</h6>
+                        <p class="kpi-value text-dark mb-1" id="kpi-pretax-profit">-</p>
+                        <p class="small text-muted mb-0" id="kpi-pretax-profit-diff">-</p>
                     </div>
                 </div>
             </div>
         </div>
-
 
         <div class="row g-4">
 
             <div class="col-lg-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h5 class="card-title" id="expense-breakdown-chart-title">経費 推移 (通期)</h5>
-                        <div class="chart-container mt-4">
-                            <canvas id="expenseBreakdownChart"></canvas>
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 fs-6" id="main-chart-title">収益 推移</h5>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="main-chart-mode" id="mode-gross"
+                                    value="gross" checked>
+                                <label class="btn btn-outline-primary" for="mode-gross">差引収益</label>
+                                <input type="radio" class="btn-check" name="main-chart-mode" id="mode-pretax"
+                                    value="pretax">
+                                <label class="btn btn-outline-primary" for="mode-pretax">税引前利益</label>
+                            </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h5 class="card-title" id="sub-chart-title">勘定科目別 経費合計 (通期)</h5>
-                        <div class="chart-container mt-4">
-                            <canvas id="subChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h5 class="card-title" id="main-chart-title">差引収益 推移</h5>
-                        <div class="chart-container mt-4">
+                        <div class="chart-container mt-2">
                             <canvas id="mainChart"></canvas>
                         </div>
                     </div>
                 </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 fs-6" id="expense-chart-title">経費 推移</h5>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="expense-chart-mode" id="mode-expense"
+                                    value="expense" checked>
+                                <label class="btn btn-outline-secondary" for="mode-expense">経費(除労務費)</label>
+                                <input type="radio" class="btn-check" name="expense-chart-mode" id="mode-labor"
+                                    value="labor">
+                                <label class="btn btn-outline-secondary" for="mode-labor">労務費</label>
+                            </div>
+                        </div>
+                        <div class="chart-container mt-2">
+                            <canvas id="expenseChart"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="col-lg-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <h5 class="card-title" id="revenue-sub-chart-title">収入項目別 合計 (通期)</h5>
-                        <div class="chart-container mt-4">
-                            <canvas id="revenueSubChart"></canvas>
+
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-body p-3">
+                        <h5 class="card-title mb-0 fs-6" id="revenue-stack-chart-title">収入項目別 推移</h5>
+                        <div class="chart-container mt-2">
+                            <canvas id="revenueStackChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 fs-6" id="productivity-chart-title">生産性 推移</h5>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="productivity-chart-mode" id="mode-hours"
+                                    value="hours" checked>
+                                <label class="btn btn-outline-success" for="mode-hours">総時間</label>
+
+                                <input type="radio" class="btn-check" name="productivity-chart-mode" id="mode-hourly"
+                                    value="hourly">
+                                <label class="btn btn-outline-success" for="mode-hourly">時間当たり</label>
+                            </div>
+                        </div>
+                        <div class="chart-container mt-2">
+                            <canvas id="productivityChart"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
         <div id="loading-overlay" class="d-none justify-content-center align-items-center">
             <div class="d-flex align-items-center text-white h3">
                 <div class="spinner-border me-3" role="status">

@@ -1,16 +1,14 @@
 document.addEventListener('DOMContentLoaded', function () {
     // --- グローバル変数 ---
     const mainCtx = document.getElementById('mainChart').getContext('2d');
-    const subCtx = document.getElementById('subChart').getContext('2d');
-    const revenueSubCtx = document.getElementById('revenueSubChart').getContext('2d');
-    // 左上のグラフ用 Canvas (IDは同じ)
-    const expenseBreakdownCtx = document.getElementById('expenseBreakdownChart').getContext('2d');
+    const expenseCtx = document.getElementById('expenseChart').getContext('2d');
+    const revenueStackCtx = document.getElementById('revenueStackChart').getContext('2d');
+    const productivityCtx = document.getElementById('productivityChart').getContext('2d');
 
+    let mainChart, expenseChart, revenueStackChart, productivityChart;
 
-    let mainChart;
-    let subChart;
-    let revenueSubChart;
-    let expenseBreakdownChart; // expense'Breakdown'Chart のまま使用
+    let currentChartData = null;
+    let currentFilters = null;
 
     const yearSelect = document.getElementById('year-select');
     const officeSelect = document.getElementById('office-select');
@@ -18,376 +16,330 @@ document.addEventListener('DOMContentLoaded', function () {
     const loadingOverlay = document.getElementById('loading-overlay');
     const periodSelect = document.getElementById('period-type');
 
-    // --- チャートの初期化 (メイン: 差引収益用) ---
+    // Toggles
+    const mainChartToggles = document.getElementsByName('main-chart-mode');
+    const expenseChartToggles = document.getElementsByName('expense-chart-mode');
+    const productivityChartToggles = document.getElementsByName('productivity-chart-mode');
+
+    // --- チャート初期化 ---
+
+    // 1. 左上: 収益
     function initMainChart() {
         if (mainChart) mainChart.destroy();
         mainChart = new Chart(mainCtx, {
-            type: 'bar', // 複合グラフのデフォルト
+            type: 'bar',
             data: { labels: [], datasets: [] },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { ticks: { callback: v => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(v) } } },
+                plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()} 円` } } }
+            }
+        });
+    }
+
+    // 2. 左下: 経費
+    function initExpenseChart() {
+        if (expenseChart) expenseChart.destroy();
+        expenseChart = new Chart(expenseCtx, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { ticks: { callback: v => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(v) } } },
+                plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()} 円` } } }
+            }
+        });
+    }
+
+    // 3. 右上: 収入積み上げ (Stacked Bar) + 比較線
+    function initRevenueStackChart() {
+        if (revenueStackChart) revenueStackChart.destroy();
+        revenueStackChart = new Chart(revenueStackCtx, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
                 scales: {
+                    x: { stacked: true },
                     y: {
-                        ticks: {
-                            callback: (value) => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(value)
-                        }
+                        stacked: true,
+                        ticks: { callback: v => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(v) }
                     }
                 },
                 plugins: {
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toLocaleString()} 円`
-                        }
-                    }
-                }
-            }
-        });
-    }
+                            label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()} 円`,
 
-    // 経費推移グラフの初期化 (積み上げ棒+折れ線)
-    function initExpenseTrendChart() {
-        if (expenseBreakdownChart) expenseBreakdownChart.destroy();
-        expenseBreakdownChart = new Chart(expenseBreakdownCtx, {
-            type: 'bar', // 複合グラフのデフォルト
-            data: { labels: [], datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                // 積み上げグラフ用の設定
-                scales: {
-                    x: {
-                        stacked: true, // X軸を積み上げ
-                    },
-                    y: {
-                        stacked: true, // Y軸を積み上げ
-                        ticks: {
-                            callback: (value) => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(value)
+                            // ★追加: ツールチップの最下部に合計を表示する
+                            footer: (tooltipItems) => {
+                                let total = 0;
+                                const index = tooltipItems[0].dataIndex;
+                                const chart = tooltipItems[0].chart;
+                                chart.data.datasets.forEach((dataset, i) => {
+                                    if (dataset.type === 'bar' && chart.isDatasetVisible(i)) {
+                                        total += (dataset.data[index] || 0);
+                                    }
+                                });
+                                return '合計: ' + total.toLocaleString() + ' 円';
+                            }
                         }
                     }
                 },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toLocaleString()} 円`
-                        }
-                    }
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
                 }
             }
         });
     }
 
-
-    // --- チャートの初期化 (サブチャート: ドーナツ汎用) ---
-    function initSubChart(ctx, label) {
-        const colors = [
-            '#0d6efd', '#6c757d', '#dc3545', '#ffc107',
-            '#198754', '#6f42c1', '#fd7e14', '#20c997'
-        ];
-
-        return new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: label,
-                    data: [],
-                    backgroundColor: colors,
-                    hoverOffset: 4
-                }]
-            },
+    // 4. 右下: 生産性 (総時間 vs 時間当たり)
+    function initProductivityChart() {
+        if (productivityChart) productivityChart.destroy();
+        productivityChart = new Chart(productivityCtx, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } },
                 plugins: {
-                    legend: { position: 'bottom' },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => `${context.label}: ${context.parsed.toLocaleString()} 円`
-                        }
-                    }
+                    tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}` } }
                 }
             }
         });
     }
 
-    // --- グラフ更新 ---
+    // --- 更新プロセス ---
     async function updateDashboard() {
         const year = yearSelect.value;
         const baseType = document.getElementById('base-data').value;
         const compareType = document.getElementById('compare-data').value;
         const officeId = officeSelect.value;
         const periodType = periodSelect.value;
-
         if (!year) return;
 
         loadingOverlay.classList.remove('d-none');
         loadingOverlay.classList.add('d-flex');
 
         try {
-            const response = await fetch(`./statistics/get_statistics.php?year=${year}&base=${baseType}&compare=${compareType}&office=${officeId}&period=${periodType}`);
+            const res = await fetch(`./statistics/get_statistics.php?year=${year}&base=${baseType}&compare=${compareType}&office=${officeId}&period=${periodType}`);
+            if (!res.ok) throw new Error(res.status);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
 
-            if (!response.ok) {
-                let errorMsg = `サーバーエラー: ${response.status} ${response.statusText}`;
-                try {
-                    const errorData = await response.json();
-                    errorMsg = errorData.error || errorMsg;
-                } catch (e) {
-                    const textError = await response.text();
-                    console.error("Non-JSON Error Response:", textError);
-                    throw new Error(errorMsg + "\n" + textError.substring(0, 200));
-                }
-                throw new Error(errorMsg);
-            }
+            currentChartData = data;
+            currentFilters = data.filters;
 
-            const responseText = await response.text();
-            let data;
-            try {
-                data = JSON.parse(responseText);
-            } catch (e) {
-                console.error("JSON Parse Error:", e.message);
-                console.error("Received Text:", responseText);
-                throw new Error(`JSONの解析に失敗しました: ${e.message}. \n受信データ: ${responseText.substring(0, 200)}...`);
-            }
-
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // 1. KPI
             updateKpiCards(data.kpi, data.filters);
+            renderMainChart();
+            renderExpenseChart();
+            renderRevenueStackChart();
+            renderProductivityChart();
 
-            // 2. 左下: 差引収益 推移
-            updateMainChart(data.mainChart, data.filters);
-
-            // 3. 左上: 経費 推移
-            updateExpenseTrendChart(data.expenseTrendChart, data.filters);
-
-
-            // 4. 右上: 勘定科目別 経費 (ドーナツ)
-            const expenseTitle = `勘定科目別 経費合計 (${data.filters.officeName} / 通期)`;
-            updateSubChart(subChart, 'sub-chart-title', data.expenseSubChart, expenseTitle, '経費合計');
-
-            // 5. 右下: 収入項目別 (ドーナツ)
-            const revenueTitle = `収入項目別 合計 (${data.filters.officeName} / 通期)`;
-            updateSubChart(revenueSubChart, 'revenue-sub-chart-title', data.revenueSubChart, revenueTitle, '収入合計');
-
-        } catch (error) {
-            console.error('ダッシュボードの更新に失敗しました:', error, error.stack);
-            alert('データの取得に失敗しました: ' + error.message);
+        } catch (e) {
+            alert('データ更新失敗: ' + e.message);
         } finally {
             loadingOverlay.classList.remove('d-flex');
             loadingOverlay.classList.add('d-none');
         }
     }
 
-    // --- DOM更新関数 (KPI) ---
-    function updateKpiCards(kpiData, filters) {
-        const baseDataSelect = document.getElementById('base-data');
-        const selectedOption = baseDataSelect.options[baseDataSelect.selectedIndex];
-        const baseText = selectedOption.text.split('(')[0].trim();
-        const kpiTitle = `通期${baseText}`;
+    // --- KPI ---
+    function updateKpiCards(kpi, filters) {
+        const setKpi = (id, text, diff) => {
+            const elVal = document.getElementById(id);
+            const elDiff = document.getElementById(id + '-diff');
+            if (elVal) elVal.textContent = text;
+            updateDiffText(elDiff, diff, filters.compareName);
+        };
 
-        document.getElementById('kpi-title-1').textContent = `差引収益（${kpiTitle}）`;
-        document.getElementById('kpi-gross-profit').textContent = `${kpiData.grossProfit.value.toLocaleString()} 円`;
-        updateDiffText('kpi-gross-profit-diff', kpiData.grossProfit.diff, filters.compareName);
+        // 数値を3桁区切りにするヘルパー関数
+        const fmt = (num) => Number(num).toLocaleString();
 
-        document.getElementById('kpi-title-revenue').textContent = `収入合計（${kpiTitle}）`;
-        document.getElementById('kpi-revenue-total').textContent = `${kpiData.revenueTotal.value.toLocaleString()} 円`;
-        updateDiffText('kpi-revenue-total-diff', kpiData.revenueTotal.diff, filters.compareName);
+        // 各カードの更新（fmt関数を通してカンマ区切りにする）
+        setKpi('kpi-revenue-total', fmt(kpi.revenueTotal.value) + ' 円', kpi.revenueTotal.diff);
+        setKpi('kpi-expense-total', fmt(kpi.expenseTotal.value) + ' 円', kpi.expenseTotal.diff);
+        setKpi('kpi-gross-profit', fmt(kpi.grossProfit.value) + ' 円', kpi.grossProfit.diff);
 
-        // kpi.expenseTotal は「労務費以外の経費」
-        document.getElementById('kpi-title-2').textContent = `経費合計（${kpiTitle}）`;
-        document.getElementById('kpi-expense-total').textContent = `${kpiData.expenseTotal.value.toLocaleString()} 円`;
-        updateDiffText('kpi-expense-total-diff', kpiData.expenseTotal.diff, filters.compareName);
+        // 総時間は小数点第2位固定（既存の設定を維持）
+        setKpi('kpi-total-hours', Number(kpi.totalHours.value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' 時間', kpi.totalHours.diff);
 
-        document.getElementById('kpi-title-3').textContent = `労務費合計（${kpiTitle}）`;
-        document.getElementById('kpi-labor-cost').textContent = `${kpiData.laborCost.value.toLocaleString()} 円`;
-        updateDiffText('kpi-labor-cost-diff', kpiData.laborCost.diff, filters.compareName);
-
-        document.getElementById('kpi-title-4').textContent = `総時間（${kpiTitle}）`;
-        document.getElementById('kpi-total-hours').textContent = `${kpiData.totalHours.value.toLocaleString()} 時間`;
-        updateDiffText('kpi-total-hours-diff', kpiData.totalHours.diff, filters.compareName);
+        setKpi('kpi-hourly-profit', fmt(Math.round(kpi.hourlyProfit.value)) + ' 円', kpi.hourlyProfit.diff);
+        setKpi('kpi-pretax-profit', fmt(kpi.preTaxProfit.value) + ' 円', kpi.preTaxProfit.diff);
     }
-
-    // --- 差分表示 ---
-    function updateDiffText(elementId, diff, compareName) {
-        const baseText = (compareName !== 'none') ? `vs ${compareName}` : '';
-        const el = document.getElementById(elementId);
-        el.classList.remove('text-success', 'text-danger', 'text-muted');
-
-        if (diff === null || compareName === 'none') {
-            el.textContent = (compareName !== 'none') ? `${baseText} (-)` : '';
-            el.classList.add('text-muted');
-            return;
-        }
-        const percent = (diff * 100).toFixed(1);
-        if (diff > 0) {
-            el.textContent = `+${percent}% (${baseText})`;
-            el.classList.add('text-success');
-        } else if (diff < 0) {
-            el.textContent = `${percent}% (${baseText})`;
-            el.classList.add('text-danger');
+    function updateDiffText(el, diff, cName) {
+        if (!el) return;
+        el.className = 'small text-muted mb-0';
+        if (diff === null || cName === 'なし') {
+            el.textContent = (cName !== 'なし') ? `vs ${cName} (-)` : '';
         } else {
-            el.textContent = `0.0% (${baseText})`;
-            el.classList.add('text-muted');
+            const p = (diff * 100).toFixed(1);
+            el.textContent = (diff > 0 ? '+' : '') + p + `% (vs ${cName})`;
+            if (diff > 0) el.classList.replace('text-muted', 'text-success');
+            if (diff < 0) el.classList.replace('text-muted', 'text-danger');
         }
     }
 
-    // --- DOM更新関数 (Main Chart: 差引収益) ---
-    function updateMainChart(chartData, filters) {
-        document.getElementById('main-chart-title').textContent = `差引収益 推移 (${filters.officeName} / ${filters.periodName})`;
-        mainChart.data.labels = chartData.labels;
+    // --- 描画ロジック ---
 
-        mainChart.data.datasets = [
-            {
-                type: 'bar',
-                label: `差引収益 (${chartData.baseLabel})`,
-                data: chartData.baseData,
-                backgroundColor: 'rgba(13, 110, 253, 0.7)',
-                borderColor: 'rgba(13, 110, 253, 1)',
-                borderWidth: 1,
-                order: 2
-            }
-        ];
+    // 1. 左上: 収益
+    function renderMainChart() {
+        if (!currentChartData) return;
+        const mode = document.querySelector('input[name="main-chart-mode"]:checked').value;
+        const d = currentChartData.mainChart;
+        const isPretax = (mode === 'pretax');
+        const title = isPretax ? '税引前利益' : '差引収益';
+        const baseD = isPretax ? d.baseDataPreTax : d.baseDataGross;
+        const compD = isPretax ? d.compareDataPreTax : d.compareDataGross;
 
-        if (document.getElementById('compare-data').value !== 'none' && chartData.compareData) {
+        document.getElementById('main-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
+
+        mainChart.data.labels = d.labels;
+        mainChart.data.datasets = [{
+            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            backgroundColor: 'rgba(13, 110, 253, 0.7)', borderColor: 'rgba(13, 110, 253, 1)', borderWidth: 1, order: 2
+        }];
+        if (currentFilters.compareName !== 'なし' && compD) {
             mainChart.data.datasets.push({
-                type: 'line',
-                label: `差引収益 (${chartData.compareLabel})`,
-                data: chartData.compareData,
-                borderColor: 'rgba(220, 53, 69, 1)',
-                backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                fill: false,
-                tension: 0.1,
-                order: 1
+                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
+                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
             });
         }
         mainChart.update();
     }
 
-    // 経費推移グラフの更新関数
-    function updateExpenseTrendChart(chartData, filters) {
-        document.getElementById('expense-breakdown-chart-title').textContent = `経費 推移 (${filters.officeName} / ${filters.periodName})`;
-        expenseBreakdownChart.data.labels = chartData.labels;
+    // 2. 左下: 経費
+    function renderExpenseChart() {
+        if (!currentChartData) return;
+        const mode = document.querySelector('input[name="expense-chart-mode"]:checked').value;
+        const d = currentChartData.expenseTrendChart;
+        const isLabor = (mode === 'labor');
+        const title = isLabor ? '労務費' : '経費(除労務費)';
+        const baseD = isLabor ? d.baseLaborData : d.baseExpenseData;
+        const compD = isLabor ? d.compareLaborData : d.compareExpenseData;
+        const color = isLabor ? '255, 193, 7' : '108, 117, 125';
 
-        expenseBreakdownChart.data.datasets = [
-            {
-                type: 'bar',
-                label: `労務費 (${chartData.baseLabel})`,
-                data: chartData.baseLaborData,
-                backgroundColor: 'rgba(255, 193, 7, 0.7)', // Yellow
-                borderColor: 'rgba(255, 193, 7, 1)',
-                borderWidth: 1,
-                stack: 'base' // 積み上げグループ 'base'
-            },
-            {
-                type: 'bar',
-                label: `その他経費 (${chartData.baseLabel})`,
-                data: chartData.baseExpenseData,
-                backgroundColor: 'rgba(108, 117, 125, 0.7)', // Gray
-                borderColor: 'rgba(108, 117, 125, 1)',
-                borderWidth: 1,
-                stack: 'base' // 積み上げグループ 'base'
-            }
-        ];
+        document.getElementById('expense-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
 
-        // 比較データ（折れ線グラフ）
-        if (document.getElementById('compare-data').value !== 'none' && chartData.compareTotalData) {
-            expenseBreakdownChart.data.datasets.push({
-                type: 'line',
-                label: `総経費 (${chartData.compareLabel})`,
-                data: chartData.compareTotalData,
-                borderColor: 'rgba(220, 53, 69, 1)', // Red
-                backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                fill: false, // 見やすさのため面グラフ(fill:true)にしない
-                tension: 0.1
+        expenseChart.data.labels = d.labels;
+        expenseChart.data.datasets = [{
+            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            backgroundColor: `rgba(${color}, 0.7)`, borderColor: `rgba(${color}, 1)`, borderWidth: 1, order: 2
+        }];
+        if (currentFilters.compareName !== 'なし' && compD) {
+            expenseChart.data.datasets.push({
+                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
+                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
             });
         }
-        expenseBreakdownChart.update();
+        expenseChart.update();
     }
 
+    // 3. 右上: 収入積み上げ
+    function renderRevenueStackChart() {
+        if (!currentChartData) return;
+        const d = currentChartData.revenueStackChart;
+        document.getElementById('revenue-stack-chart-title').textContent = `収入項目別 推移 (${currentFilters.officeName})`;
 
-    // --- DOM更新関数 (Sub Chart: ドーナツ) ---
-    function updateSubChart(chartInstance, titleElementId, chartData, titleText, dataTypeLabel) {
-        if (!chartInstance || !chartData) {
-            if (titleElementId) {
-                document.getElementById(titleElementId).textContent = titleText || 'データなし';
-            }
-            if (chartInstance) {
-                chartInstance.data.labels = [];
-                chartInstance.data.datasets[0].data = [];
-                chartInstance.update();
-            }
-            return;
+        revenueStackChart.data.labels = d.labels;
+
+        const colors = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545', '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'];
+
+        const datasets = d.datasets.map((ds, i) => ({
+            type: 'bar',
+            label: ds.label,
+            data: ds.data,
+            backgroundColor: colors[i % colors.length],
+            stack: 'stack1',
+            order: 2
+        }));
+
+        if (currentFilters.compareName !== 'なし' && d.compareTotalData) {
+            datasets.push({
+                type: 'line',
+                label: `収入合計 (${d.compareLabel})`,
+                data: d.compareTotalData,
+                borderColor: '#212529',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                fill: false,
+                tension: 0.1,
+                order: 1
+            });
         }
 
-        document.getElementById(titleElementId).textContent = titleText;
-        chartInstance.data.labels = chartData.labels;
-        chartInstance.data.datasets[0].data = chartData.data;
-        chartInstance.data.datasets[0].label = dataTypeLabel;
-        chartInstance.update();
+        revenueStackChart.data.datasets = datasets;
+        revenueStackChart.update();
     }
 
+    // 4. 右下: 生産性
+    function renderProductivityChart() {
+        if (!currentChartData) return;
+        const mode = document.querySelector('input[name="productivity-chart-mode"]:checked').value;
+        const d = currentChartData.productivityChart;
+        const isHourly = (mode === 'hourly');
+        const title = isHourly ? '時間当たり採算' : '総時間';
+        const baseD = isHourly ? d.baseHourlyData : d.baseHoursData;
+        const compD = isHourly ? d.compareHourlyData : d.compareHoursData;
+        const unit = isHourly ? ' 円' : ' 時間';
 
-    // --- フィルター読み込み ---
+        document.getElementById('productivity-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
+
+        productivityChart.data.labels = d.labels;
+        productivityChart.data.datasets = [{
+            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            backgroundColor: 'rgba(25, 135, 84, 0.7)', borderColor: 'rgba(25, 135, 84, 1)', borderWidth: 1, order: 2
+        }];
+        if (currentFilters.compareName !== 'なし' && compD) {
+            productivityChart.data.datasets.push({
+                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
+                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
+            });
+        }
+
+        // ★修正: 総時間の時はツールチップでも小数点第2位まで強制表示
+        productivityChart.options.plugins.tooltip.callbacks.label = (c) => {
+            const formatOpts = isHourly ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+            return `${c.dataset.label}: ${c.parsed.y.toLocaleString(undefined, formatOpts)}${unit}`;
+        };
+
+        productivityChart.update();
+    }
+
+    // --- 初期ロード ---
     async function loadFilterOptions() {
         try {
-            const response = await fetch('./statistics/get_filter_data.php');
-            const data = await response.json();
-
-            if (data.error) throw new Error(data.error);
+            const res = await fetch('./statistics/get_filter_data.php');
+            const data = await res.json();
 
             yearSelect.innerHTML = '';
             if (data.years && data.years.length > 0) {
-                data.years.forEach(year => {
-                    const option = document.createElement('option');
-                    option.value = year;
-                    option.textContent = `${year}年度`;
-                    yearSelect.appendChild(option);
+                data.years.forEach(y => {
+                    const opt = document.createElement('option');
+                    opt.value = y; opt.textContent = `${y}年度`; yearSelect.appendChild(opt);
                 });
-                // 2024年度をデフォルト選択
-                const currentFiscalYear = "2024";
-                if (data.years.includes(currentFiscalYear)) {
-                    yearSelect.value = currentFiscalYear;
-                }
-            } else {
-                yearSelect.innerHTML = '<option value="">データなし</option>';
-                yearSelect.disabled = true;
+                const today = new Date();
+                let ty = today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear();
+                if (data.years.map(String).includes(String(ty))) yearSelect.value = String(ty);
+                else yearSelect.value = data.years[0];
             }
-
             officeSelect.innerHTML = '<option value="all">全社合計</option>';
-            if (data.offices) {
-                data.offices.forEach(office => {
-                    const option = document.createElement('option');
-                    option.value = office.id;
-                    option.textContent = office.name;
-                    officeSelect.appendChild(option);
-                });
-            }
-
+            if (data.offices) data.offices.forEach(o => {
+                const opt = document.createElement('option'); opt.value = o.id; opt.textContent = o.name; officeSelect.appendChild(opt);
+            });
             updateDashboard();
-
-        } catch (error) {
-            console.error('フィルターデータの読み込みに失敗しました:', error);
-            alert('初期データの読み込みに失敗しました。');
-        }
+        } catch (e) { console.error(e); }
     }
 
-    // --- 初期化 ---
-    initMainChart(); // 左下: 差引収益
-    // 左上のグラフ初期化
-    initExpenseTrendChart(); // 左上: 経費推移
-
-    // ドーナツグラフの初期化
-    subChart = initSubChart(subCtx, '経費合計'); // 右上
-    revenueSubChart = initSubChart(revenueSubCtx, '収入合計'); // 右下
-
-
-    // --- イベントリスナー ---
     updateButton.addEventListener('click', updateDashboard);
+    mainChartToggles.forEach(r => r.addEventListener('change', renderMainChart));
+    expenseChartToggles.forEach(r => r.addEventListener('change', renderExpenseChart));
+    productivityChartToggles.forEach(r => r.addEventListener('change', renderProductivityChart));
 
-    // ページロード
+    initMainChart();
+    initExpenseChart();
+    initRevenueStackChart();
+    initProductivityChart();
     loadFilterOptions();
 });
