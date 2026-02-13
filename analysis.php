@@ -1,3 +1,7 @@
+<?php
+require_once './includes/auth_check.php';
+?>
+
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -140,6 +144,10 @@
                             <li><a class="dropdown-item" href="./details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="./offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="./offices/office_list.php">係リスト</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="./users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -149,11 +157,10 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
                             aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="./logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>

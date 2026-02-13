@@ -66,13 +66,13 @@ try {
 
         $officeFilterTime = "";
         $officeFilterDetails = "";
-        $officeFilterRevenue = ""; // 収入用のフィルターを追加
+        $officeFilterRevenue = "";
         $paramsBase = [];
 
         if ($officeId !== 'all') {
             $officeFilterTime = " AND t.office_id = :oid ";
             $officeFilterDetails = " AND det.office_id = :oid ";
-            $officeFilterRevenue = " AND ri.office_id = :oid "; // 収入項目の営業所紐付けでフィルタ
+            $officeFilterRevenue = " AND ri.office_id = :oid ";
             $paramsBase[':oid'] = $officeId;
         }
 
@@ -103,18 +103,25 @@ try {
             $paramsDetails = array_merge([':pid' => $parentId], $paramsBase);
             $monthLabel = formatMonthJP($year, $month);
 
-            // --- [追加] 営業所別集計用の一時配列初期化 ---
-            // キー: office_id, 値: ['name'=>..., 'code'=>..., 'rev'=>0, 'exp'=>0, 'labor'=>0]
+            // 営業所別集計用の一時配列初期化
             $officeMonthStats = [];
 
             // --- A. 経費詳細集計 (勘定科目別) ---
             $sqlDet = "
-                SELECT a.id as acc_id, a.name as acc_name, d.detail_id, det.name as detail_name, SUM(d.amount) as amount
+                SELECT 
+                    a.id as acc_id, 
+                    a.name as acc_name, 
+                    d.detail_id, 
+                    det.name as detail_name, 
+                    o.name as office_name,
+                    o.identifier as office_code,
+                    SUM(d.amount) as amount
                 FROM " . $tablePrefix . "_details d
                 JOIN details det ON d.detail_id = det.id
                 JOIN accounts a ON det.account_id = a.id
+                LEFT JOIN offices o ON det.office_id = o.id
                 WHERE d." . $fkName . " = :pid " . $officeFilterDetails . "
-                GROUP BY a.id, a.name, d.detail_id, det.name
+                GROUP BY a.id, a.name, d.detail_id, det.name, o.name, o.identifier
             ";
             $stmtDet = $dbh->prepare($sqlDet);
             $stmtDet->execute($paramsDetails);
@@ -130,8 +137,10 @@ try {
                 if (!isset($detailsBuffer[$accKey][$uniqueKey])) {
                     $detailsBuffer[$accKey][$uniqueKey] = [
                         'detail_name' => $row['detail_name'],
+                        'office_name' => $row['office_name'],
                         'month_name' => $monthLabel,
-                        'sort_key' => $ymStr . '_' . $row['detail_name'],
+                        // 詳細名(detail_name)を先にして科目ごとにまとめる
+                        'sort_key' => $ymStr . '_' . $row['detail_name'] . '_' . ($row['office_code'] ?? '99999'),
                         'cp' => 0,
                         'plan' => 0,
                         'result' => 0
@@ -140,8 +149,7 @@ try {
                 $detailsBuffer[$accKey][$uniqueKey][$sourceType] += $row['amount'];
             }
 
-            // --- [追加] 経費の営業所別集計 (計算用) ---
-            // 勘定科目別とは別に、営業所IDでグルーピングして取得
+            // --- 経費の営業所別集計 (計算用) ---
             $sqlExpOffice = "
                 SELECT det.office_id, o.name as office_name, o.identifier, SUM(d.amount) as amount
                 FROM " . $tablePrefix . "_details d
@@ -161,13 +169,18 @@ try {
             }
 
             // --- B. 収入詳細集計 (項目別) ---
-            // ※既存コードでは収入に $officeFilterDetails が適用されていなかったので修正して適用
             $sqlRev = "
-                SELECT ri.id as item_id, ri.name as item_name, SUM(r.amount) as amount
+                SELECT 
+                    ri.id as item_id, 
+                    ri.name as item_name, 
+                    o.name as office_name,
+                    o.identifier as office_code,
+                    SUM(r.amount) as amount
                 FROM " . $tablePrefix . "_revenues r
                 JOIN revenue_items ri ON r.revenue_item_id = ri.id
+                LEFT JOIN offices o ON ri.office_id = o.id
                 WHERE r." . $fkName . " = :pid " . $officeFilterRevenue . "
-                GROUP BY ri.id, ri.name
+                GROUP BY ri.id, ri.name, o.name, o.identifier
             ";
             $stmtRev = $dbh->prepare($sqlRev);
             $stmtRev->execute($paramsDetails);
@@ -181,8 +194,10 @@ try {
                 if (!isset($detailsBuffer[$revKey][$uniqueKey])) {
                     $detailsBuffer[$revKey][$uniqueKey] = [
                         'detail_name' => $row['item_name'],
+                        'office_name' => $row['office_name'],
                         'month_name' => $monthLabel,
-                        'sort_key' => $ymStr . '_' . $row['item_name'],
+                        // 項目名(item_name)を先にして科目ごとにまとめる
+                        'sort_key' => $ymStr . '_' . $row['item_name'] . '_' . ($row['office_code'] ?? '99999'),
                         'cp' => 0,
                         'plan' => 0,
                         'result' => 0
@@ -191,7 +206,7 @@ try {
                 $detailsBuffer[$revKey][$uniqueKey][$sourceType] += $row['amount'];
             }
 
-            // --- [追加] 収入の営業所別集計 (計算用) ---
+            // --- 収入の営業所別集計 (計算用) ---
             $sqlRevOffice = "
                 SELECT ri.office_id, o.name as office_name, o.identifier, SUM(r.amount) as amount
                 FROM " . $tablePrefix . "_revenues r
@@ -253,7 +268,7 @@ try {
                 $officeCode = $dRow['office_code'] ?? '99999';
                 $oid = $dRow['office_id'];
 
-                // [追加] 労務費を営業所別集計配列にセット
+                // 労務費を営業所別集計配列にセット
                 if (!isset($officeMonthStats[$oid])) {
                     $officeMonthStats[$oid] = initOfficeStats($officeName, $officeCode);
                 }
@@ -277,7 +292,9 @@ try {
                     if (!isset($detailsBuffer[$k][$uniqueKey])) {
                         $detailsBuffer[$k][$uniqueKey] = [
                             'detail_name' => $officeName,
+                            'office_name' => null,
                             'month_name' => $monthLabel,
+                            // 時間・人員系は項目の性質上、営業所ごとに分かれているのが正解なのでソートキーは変更なし
                             'sort_key' => $ymStr . '_' . $officeCode,
                             'cp' => 0,
                             'plan' => 0,
@@ -290,7 +307,6 @@ try {
 
 
             // 2. 集計サマリ用（全体の合算）
-            // ... (既存ロジックそのまま維持) ...
             $sqlTime = "
                 SELECT 
                     SUM(t.standard_hours) as std,
@@ -328,7 +344,7 @@ try {
                 $aggregated['labor_cost'][$sourceType] += $timeData['labor_cost'];
             }
 
-            // --- [追加] 営業所ごとの差引収益・税引前利益・経費合計を計算してバッファへ ---
+            // --- 営業所ごとの差引収益・税引前利益・経費合計を計算してバッファへ ---
             foreach ($officeMonthStats as $oid => $stats) {
                 $rev = $stats['rev'];
                 $exp = $stats['exp'];
@@ -346,12 +362,12 @@ try {
                 ];
 
                 foreach ($targetKeys as $k => $val) {
-                    // ユニークキー: 項目_年月_営業所ID
                     $uniqueKey = $k . '_' . $ymStr . '_' . $oid;
 
                     if (!isset($detailsBuffer[$k][$uniqueKey])) {
                         $detailsBuffer[$k][$uniqueKey] = [
                             'detail_name' => $stats['name'],
+                            'office_name' => null,
                             'month_name' => $monthLabel,
                             'sort_key' => $ymStr . '_' . $stats['code'],
                             'cp' => 0,
@@ -388,11 +404,11 @@ try {
                 $calc = calcDiffRatio($dVals, $dVals['detail_name'], $uniqueKey);
                 $calc['month_name'] = $dVals['month_name'];
                 $calc['detail_name'] = $dVals['detail_name'];
+                $calc['office_name'] = $dVals['office_name'] ?? null;
                 $calc['sort_key'] = $dVals['sort_key'];
                 $detailList[] = $calc;
             }
 
-            // 詳細ソート (年月順 > 営業所identifier順、または項目名順)
             usort($detailList, function ($a, $b) {
                 return strcmp($a['sort_key'], $b['sort_key']);
             });
@@ -450,5 +466,5 @@ function calcDiffRatio($vals, $name, $id)
 
 function formatMonthJP($y, $m)
 {
-    return "{$y}年{$m}月";
+    return "{$y}年度 {$m}月";
 }
