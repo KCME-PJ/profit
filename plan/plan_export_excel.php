@@ -1,11 +1,10 @@
 <?php
-require_once '../vendor/autoload.php'; // PhpSpreadsheet 読込
+require_once '../vendor/autoload.php';
 require_once '../includes/database.php';
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-// 入力チェック
 $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
 $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
 
@@ -14,7 +13,6 @@ if (!$year || !$month) {
     exit;
 }
 
-// エラーリダイレクト用関数
 function redirectWithError($msg, $year, $month)
 {
     $safeMsg = urlencode($msg);
@@ -24,7 +22,7 @@ function redirectWithError($msg, $year, $month)
 
 $dbh = getDb();
 
-// Planデータの存在と確定ステータスチェック
+// Planデータチェック
 $queryStatus = "SELECT id, status, hourly_rate FROM monthly_plan WHERE year = :year AND month = :month";
 $stmt = $dbh->prepare($queryStatus);
 $stmt->execute([':year' => $year, ':month' => $month]);
@@ -32,14 +30,12 @@ $planData = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$planData) {
     redirectWithError("【{$year}年度 {$month}月】の予定は未登録です。", $year, $month);
-} elseif ($planData['status'] !== 'fixed') {
-    redirectWithError("【{$year}年度 {$month}月】の予定は未確定です。確定後に出力してください。", $year, $month);
 }
+
 $monthlyPlanId = $planData['id'];
-// 親テーブルから共通賃率を取得
 $commonHourlyRate = (float)($planData['hourly_rate'] ?? 0);
 
-// 営業所の一覧を取得 (officesテーブルを使用)
+// 営業所
 $queryOffices = "SELECT id, name FROM offices ORDER BY id";
 $stmt = $dbh->prepare($queryOffices);
 $stmt->execute();
@@ -48,13 +44,22 @@ if (!$offices) {
     redirectWithError("営業所データが見つかりません。", $year, $month);
 }
 
-// 勘定科目マスターを取得 (IDと名前のマッピングのため)
-$stmtAccounts = $dbh->query("SELECT id, name FROM accounts");
-$accountsList = $stmtAccounts->fetchAll(PDO::FETCH_KEY_PAIR); // [id => name]
+// ---------------------------------------------
+// マスタ取得 (sort_order優先)
+// ---------------------------------------------
+// 勘定科目
+$stmtAccounts = $dbh->query("SELECT id, name FROM accounts ORDER BY sort_order ASC, id ASC");
+$accountsList = $stmtAccounts->fetchAll(PDO::FETCH_ASSOC);
 
-// 勘定科目ごとの集計データを取得 (全営業所分)
-// (detailsテーブルのoffice_idを利用してグループ化)
-$queryAccount = "
+// 収入カテゴリ
+$stmtRevCats = $dbh->query("SELECT id, name FROM revenue_categories ORDER BY sort_order ASC, id ASC");
+$revenueCategoriesList = $stmtRevCats->fetchAll(PDO::FETCH_ASSOC);
+
+// ---------------------------------------------
+// データ集計取得
+// ---------------------------------------------
+// 経費集計 (office_id, account_id 単位)
+$queryExpense = "
     SELECT 
         det.office_id, 
         a.id AS account_id, 
@@ -63,54 +68,49 @@ $queryAccount = "
     JOIN details det ON d.detail_id = det.id
     JOIN accounts a ON det.account_id = a.id
     WHERE d.plan_id = :monthly_plan_id 
-    GROUP BY det.office_id, a.id
-    ORDER BY det.office_id, a.id";
-
-$stmt = $dbh->prepare($queryAccount);
+    GROUP BY det.office_id, a.id";
+$stmt = $dbh->prepare($queryExpense);
 $stmt->execute([':monthly_plan_id' => $monthlyPlanId]);
-$accountRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$expenseDataRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// データを [office_id][account_id] => total の形に再編成
-$groupedAccountData = [];
-foreach ($accountRows as $row) {
-    $groupedAccountData[$row['office_id']][$row['account_id']] = $row['total'];
+$expenseData = [];
+foreach ($expenseDataRaw as $row) {
+    $expenseData[$row['office_id']][$row['account_id']] = $row['total'];
 }
 
+// 収入集計 (office_id, category_id 単位)
+// revenue_items -> revenue_categories
+$queryRevenue = "
+    SELECT 
+        i.office_id, 
+        c.id AS category_id, 
+        SUM(r.amount) AS total
+    FROM monthly_plan_revenues r
+    JOIN revenue_items i ON r.revenue_item_id = i.id
+    JOIN revenue_categories c ON i.revenue_category_id = c.id
+    WHERE r.plan_id = :monthly_plan_id
+    GROUP BY i.office_id, c.id";
+$stmt = $dbh->prepare($queryRevenue);
+$stmt->execute([':monthly_plan_id' => $monthlyPlanId]);
+$revenueDataRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$revenueData = [];
+foreach ($revenueDataRaw as $row) {
+    $oId = $row['office_id'] ?: 0; // NULLなら0(共通)
+    $revenueData[$oId][$row['category_id']] = $row['total'];
+}
+
+// =============================================
 // Excel 出力
+// =============================================
 $spreadsheet = new Spreadsheet();
-$spreadsheet->removeSheetByIndex(0); // デフォルトシート削除
+$spreadsheet->removeSheetByIndex(0);
 
-// ★ 勘定科目ID => Excel行番号のマッピング
-$accountRowMap = [
-    1 => 4,
-    2 => 5,
-    3 => 6,
-    4 => 7,
-    5 => 8,
-    6 => 9,
-    7 => 10,
-    8 => 11,
-    9 => 12,
-    10 => 13,
-    11 => 14,
-    12 => 15,
-    13 => 16,
-    14 => 17,
-    15 => 18,
-    16 => 19,
-    17 => 20,
-    18 => 21,
-    19 => 22,
-    20 => 24,
-    21 => 25
-];
-
-// 営業所ごとにシートを作成
 foreach ($offices as $office) {
     $officeId = $office['id'];
     $officeName = $office['name'];
 
-    // 営業所ごとの時間・人数データを取得
+    // 時間データ
     $queryTime = "
         SELECT 
             standard_hours, overtime_hours, transferred_hours, 
@@ -120,8 +120,6 @@ foreach ($offices as $office) {
     $stmtTime = $dbh->prepare($queryTime);
     $stmtTime->execute([':monthly_plan_id' => $monthlyPlanId, ':office_id' => $officeId]);
     $timeData = $stmtTime->fetch(PDO::FETCH_ASSOC);
-
-    // データがない場合のデフォルト値
     $timeData = $timeData ?: [
         'standard_hours' => 0,
         'overtime_hours' => 0,
@@ -130,80 +128,155 @@ foreach ($offices as $office) {
         'contract_count' => 0,
         'dispatch_count' => 0
     ];
-
-    // 共通賃率を $timeData 配列にマージ
     $timeData['hourly_rate'] = $commonHourlyRate;
 
-    // 新しいシートを作成
     $sheet = $spreadsheet->createSheet();
     $sheet->setTitle($officeName);
 
-    // ヘッダー情報
+    // 基本情報
     $sheet->setCellValue("A1", "{$year}年度");
     $sheet->setCellValue("B1", "{$month}月");
     $sheet->setCellValue("A2", "営業所名");
     $sheet->setCellValue("B2", $officeName);
 
-    // 勘定科目ごとの集計データ書き込み & 経費合計計算 (マッピング基準に変更)
-    $expenseTotal = 0;
-    $accountDataForOffice = $groupedAccountData[$officeId] ?? [];
-
-    foreach ($accountRowMap as $id => $row) {
-        $amount = (float)($accountDataForOffice[$id] ?? 0);
-        $name = $accountsList[$id] ?? "勘定科目{$id}"; // マスターから名前を取得
-
-        $sheet->setCellValue("A{$row}", $name);
-        $sheet->setCellValue("B{$row}", $amount)->getStyle("B{$row}")->getNumberFormat()->setFormatCode('#,##0');
-        $expenseTotal += $amount;
+    if ($planData['status'] === 'draft') {
+        $sheet->setCellValue("D1", "【注意】未確定 (Draft)");
+        $sheet->getStyle('D1')->getFont()->getColor()->setARGB('FFFF0000');
     }
 
-    // 固定項目（部内共通費）
-    $sheet->setCellValue("A23", "部内共通費");
-    $sheet->setCellValue("B23", 0)->getStyle("B23")->getNumberFormat()->setFormatCode('#,##0');
+    // 列定義
+    $colExpName = 'A';
+    $colExpVal = 'B';
+    $colRevName = 'D';
+    $colRevVal = 'E';
+    $colTimeName = 'G';
+    $colTimeVal = 'H';
 
-    $sheet->setCellValue("D4", "定時間");
-    $sheet->setCellValue("E4", (float)$timeData['standard_hours'])->getStyle('E4')->getNumberFormat()->setFormatCode('0.00');
-    $sheet->setCellValue("D5", "残業時間");
-    $sheet->setCellValue("E5", (float)$timeData['overtime_hours'])->getStyle('E5')->getNumberFormat()->setFormatCode('0.00');
-    $sheet->setCellValue("D6", "部内共通時間");
-    $sheet->setCellValue("E6", 0)->getStyle('E6')->getNumberFormat()->setFormatCode('0.00');
-    $sheet->setCellValue("D7", "振替時間");
-    $sheet->setCellValue("E7", (float)$timeData['transferred_hours'])->getStyle('E7')->getNumberFormat()->setFormatCode('0.00');
+    // ヘッダー
+    $headerRow = 4;
+    $sheet->setCellValue("{$colExpName}{$headerRow}", "経費");
+    $sheet->setCellValue("{$colRevName}{$headerRow}", "収入");
+    $sheet->getStyle("{$colExpName}{$headerRow}")->getFont()->setBold(true);
+    $sheet->getStyle("{$colRevName}{$headerRow}")->getFont()->setBold(true);
 
-    $sheet->setCellValue("D9", "正社員");
-    $sheet->setCellValue("E9", (int)$timeData['fulltime_count']);
-    $sheet->setCellValue("D10", "契約社員");
-    $sheet->setCellValue("E10", (int)$timeData['contract_count']);
-    $sheet->setCellValue("D11", "派遣社員");
-    $sheet->setCellValue("E11", (int)$timeData['dispatch_count']);
+    // -----------------------------------------
+    // 左側：経費リスト (A, B列)
+    // -----------------------------------------
+    $startRow = 5;
+    $currentRowExp = $startRow;
+    $expenseTotal = 0;
+    $officeExpense = $expenseData[$officeId] ?? [];
 
-    // 賃率を書き込み
-    $sheet->setCellValue("D12", "賃率");
-    $sheet->setCellValue("E12", (float)$timeData['hourly_rate'])->getStyle('E12')->getNumberFormat()->setFormatCode('#,##0');
+    foreach ($accountsList as $acc) {
+        $val = (float)($officeExpense[$acc['id']] ?? 0);
+        $sheet->setCellValue("{$colExpName}{$currentRowExp}", $acc['name']);
+        $sheet->setCellValue("{$colExpVal}{$currentRowExp}", $val)->getStyle("{$colExpVal}{$currentRowExp}")->getNumberFormat()->setFormatCode('#,##0');
+        $expenseTotal += $val;
+        $currentRowExp++;
+    }
+    // 部内共通費
+    $sheet->setCellValue("{$colExpName}{$currentRowExp}", "部内共通費");
+    $sheet->setCellValue("{$colExpVal}{$currentRowExp}", 0)->getStyle("{$colExpVal}{$currentRowExp}")->getNumberFormat()->setFormatCode('#,##0');
 
-    // 合計計算
+    // -----------------------------------------
+    // 中央：収入リスト (D, E列)
+    // -----------------------------------------
+    $currentRowRev = $startRow;
+    $revenueTotal = 0;
+    $officeRevenue = $revenueData[$officeId] ?? [];
+
+    foreach ($revenueCategoriesList as $cat) {
+        $val = (float)($officeRevenue[$cat['id']] ?? 0);
+        $sheet->setCellValue("{$colRevName}{$currentRowRev}", $cat['name']);
+        $sheet->setCellValue("{$colRevVal}{$currentRowRev}", $val)->getStyle("{$colRevVal}{$currentRowRev}")->getNumberFormat()->setFormatCode('#,##0');
+        $revenueTotal += $val;
+        $currentRowRev++;
+    }
+
+    // -----------------------------------------
+    // 右側：時間管理・合計 (G, H列)
+    // -----------------------------------------
+    // 開始行はヘッダーと同じ4行目から
+    $currentRowTime = 4;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "定時間");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (float)$timeData['standard_hours'])->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('0.00');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "残業時間");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (float)$timeData['overtime_hours'])->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('0.00');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "部内共通時間");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", 0)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('0.00');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "振替時間");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (float)$timeData['transferred_hours'])->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('0.00');
+    $currentRowTime++;
+
+    $currentRowTime++; // 空行
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "正社員");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (int)$timeData['fulltime_count']);
+    $currentRowTime++;
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "契約社員");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (int)$timeData['contract_count']);
+    $currentRowTime++;
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "派遣社員");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (int)$timeData['dispatch_count']);
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", "賃率");
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", (float)$timeData['hourly_rate'])->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $currentRowTime++; // 空行
+
+    // 計算
     $totalHours = (float)$timeData['standard_hours'] + (float)$timeData['overtime_hours'] + (float)$timeData['transferred_hours'];
     $laborCost = round($totalHours * (float)$timeData['hourly_rate']);
-    $grandTotal = $laborCost + $expenseTotal;
+    $totalCost = $expenseTotal + $laborCost;     // 総合計
+    $grossProfit = $revenueTotal - $expenseTotal; // 差引収益
+    $preTaxProfit = $revenueTotal - $totalCost;   // 税引前利益 (収入 - 総合計)
 
-    $sheet->setCellValue('D14', '総時間');
-    $sheet->setCellValue('E14', $totalHours)->getStyle('E14')->getNumberFormat()->setFormatCode('0.00');
-    $sheet->setCellValue('D15', '経費合計');
-    $sheet->setCellValue('E15', $expenseTotal)->getStyle('E15')->getNumberFormat()->setFormatCode('#,##0');
-    $sheet->setCellValue('D16', '労務費');
-    $sheet->setCellValue('E16', $laborCost)->getStyle('E16')->getNumberFormat()->setFormatCode('#,##0');
-    $sheet->setCellValue('D17', '総合計');
-    $sheet->setCellValue('E17', $grandTotal)->getStyle('E17')->getNumberFormat()->setFormatCode('#,##0');
+    // 合計ブロック出力
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '総時間');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $totalHours)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('0.00');
+    $currentRowTime++;
 
-    // 列幅自動調整
-    foreach (['A', 'B', 'D', 'E'] as $col) {
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '収入合計');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $revenueTotal)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '経費合計');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $expenseTotal)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '差引収益');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $grossProfit)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '労務費');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $laborCost)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '総合計');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $totalCost)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+    $currentRowTime++;
+
+    $sheet->setCellValue("{$colTimeName}{$currentRowTime}", '税引前利益');
+    $sheet->setCellValue("{$colTimeVal}{$currentRowTime}", $preTaxProfit)->getStyle("{$colTimeVal}{$currentRowTime}")->getNumberFormat()->setFormatCode('#,##0');
+
+
+    // 列幅調整
+    foreach ([$colExpName, $colExpVal, $colRevName, $colRevVal, $colTimeName, $colTimeVal] as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
 }
 
-// ダウンロード用ヘッダー
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header("Content-Disposition: attachment;filename=plan_summary_{$year}_{$month}.xlsx"); // ファイル名を変更
+header("Content-Disposition: attachment;filename=plan_summary_{$year}_{$month}.xlsx");
 header('Cache-Control: max-age=0');
 
 $writer = new Xlsx($spreadsheet);

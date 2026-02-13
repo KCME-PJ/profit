@@ -6,7 +6,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
-// バッファをクリア（以前の出力やエラー表示を消すため）
+// バッファをクリア
 if (ob_get_length()) ob_clean();
 
 $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
@@ -27,6 +27,9 @@ $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $spreadsheet = new Spreadsheet();
 $spreadsheet->removeSheetByIndex(0);
 
+// 設定: 出力開始行 (4行目から)
+$detailStartRow = 4;
+
 foreach ($offices as $office) {
     $officeId = $office['id'];
     $officeName = $office['name'];
@@ -39,7 +42,7 @@ foreach ($offices as $office) {
     $sheet->setCellValue("A2", "営業所名: {$officeName}");
     $sheet->setCellValue("A3", "項目 (勘定科目 - 詳細)");
 
-    // 月ヘッダー (B3〜M3)
+    // 月ヘッダー
     $colIndex = 2;
     foreach ($months as $m) {
         $colStr = Coordinate::stringFromColumnIndex($colIndex);
@@ -48,10 +51,9 @@ foreach ($offices as $office) {
     }
 
     // ============================================
-    // 1. 詳細項目のリストアップ
+    // 1. 詳細項目のリストアップ (ソート順修正)
     // ============================================
-
-    // 詳細項目リスト取得
+    // 勘定科目の並び順 -> 詳細の並び順 -> ID順
     $queryDetailsList = "
         SELECT DISTINCT 
             a.id as account_id, 
@@ -67,7 +69,7 @@ foreach ($offices as $office) {
             AND d.type = 'cp'
             AND d.amount > 0
             AND mcp.year = :year
-        ORDER BY a.id, det.id
+        ORDER BY a.sort_order ASC, a.id ASC, det.sort_order ASC, det.id ASC
     ";
 
     $stmtList = $dbh->prepare($queryDetailsList);
@@ -78,27 +80,24 @@ foreach ($offices as $office) {
     $uniqueDetails = $stmtList->fetchAll(PDO::FETCH_ASSOC);
 
     // ============================================
-    // 2. 行ごとのデータ構築と出力（金額）
+    // 2. 行ごとのデータ構築と出力
     // ============================================
 
-    // 現在の行位置
-    $currentRow = 4;
+    $currentRow = $detailStartRow;
 
-    // 各月の経費合計を保持する配列 [月 => 合計金額]
+    // 各月の経費合計を保持する配列
     $monthlyExpenseTotal = array_fill_keys($months, 0);
 
     foreach ($uniqueDetails as $uDetail) {
         $detailId = $uDetail['detail_id'];
+
         // A列: 項目名
         $itemName = $uDetail['account_name'] . " - " . $uDetail['detail_name'];
         $sheet->setCellValue("A{$currentRow}", $itemName);
 
-        // B列以降: 月次データ埋め込み
+        // B列以降: 月次データ
         $colIndex = 2;
         foreach ($months as $m) {
-            // ★ここ：年度管理なのでそのまま $year を使う
-            $targetYear = $year;
-
             $colStr = Coordinate::stringFromColumnIndex($colIndex);
 
             // 金額取得
@@ -112,7 +111,7 @@ foreach ($offices as $office) {
                   AND d.type = 'cp'
             ";
             $stmtVal = $dbh->prepare($qVal);
-            $stmtVal->execute([':detail_id' => $detailId, ':year' => $targetYear, ':month' => $m]);
+            $stmtVal->execute([':detail_id' => $detailId, ':year' => $year, ':month' => $m]);
             $amount = (float)$stmtVal->fetchColumn();
 
             $sheet->setCellValue("{$colStr}{$currentRow}", $amount);
@@ -127,12 +126,12 @@ foreach ($offices as $office) {
     }
 
     // ============================================
-    // 3. 時間・人数・賃率・合計の出力 (詳細項目の下に出力)
+    // 3. 時間・人数・合計の出力
     // ============================================
-    // 出力開始行の設定
+    // 少し空行を入れる
     $timeStartRow = $currentRow + 1;
 
-    // 項目名セット (A列)
+    // 項目名セット
     $row = $timeStartRow;
     $sheet->setCellValue("A{$row}", "定時間");
     $row++;
@@ -158,12 +157,9 @@ foreach ($offices as $office) {
     $row++;
     $sheet->setCellValue("A{$row}", "総合計");
 
-    // データセット (B列以降)
+    // データセット
     $colIndex = 2;
     foreach ($months as $m) {
-        // ★修正ポイント：ここも $yearEnd ではなく $year をそのまま使います
-        $targetYear = $year;
-
         $colStr = Coordinate::stringFromColumnIndex($colIndex);
 
         // 時間データ取得
@@ -176,7 +172,7 @@ foreach ($offices as $office) {
               AND t.type = 'cp'
         ";
         $stmtTime = $dbh->prepare($qTime);
-        $stmtTime->execute([':year' => $targetYear, ':month' => $m, ':office_id' => $officeId]);
+        $stmtTime->execute([':year' => $year, ':month' => $m, ':office_id' => $officeId]);
         $tData = $stmtTime->fetch(PDO::FETCH_ASSOC);
 
         $stdH = (float)($tData['standard_hours'] ?? 0);
