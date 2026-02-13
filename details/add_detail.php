@@ -1,14 +1,16 @@
 <?php
 session_start();
 require_once '../includes/database.php';
+require_once '../includes/logger.php';
 
 try {
     // POSTデータを取得
     $account_id = trim($_POST['account_id']);
-    $office_id = trim($_POST['office_id']);  // 営業所情報を取得
+    $office_id = trim($_POST['office_id']);
     $name = trim($_POST['name'] ?? '');
     $identifier = trim($_POST['identifier'] ?? '');
     $note = trim($_POST['note'] ?? '');
+    $sort_order = (isset($_POST['sort_order']) && $_POST['sort_order'] !== '') ? (int)$_POST['sort_order'] : 100;
 
     // 入力値の検証
     if (empty($name)) {
@@ -27,7 +29,7 @@ try {
     // データベース接続
     $dbh = getDb();
 
-    // 1. 一意識別子(identifier)の重複チェック（全体でユニーク）
+    // 1. 一意識別子(identifier)の重複チェック
     $stmt = $dbh->prepare('SELECT COUNT(*) FROM details WHERE identifier = :identifier');
     $stmt->bindValue(':identifier', $identifier, PDO::PARAM_STR);
     $stmt->execute();
@@ -35,8 +37,7 @@ try {
         throw new Exception('指定された一意識別子はすでに使用されています。');
     }
 
-    // 2. 詳細名(name)の重複チェック（営業所内でユニーク）
-    // ★修正: office_id も条件に加え、同じ営業所内でのみ名前重複を禁止する
+    // 2. 詳細名(name)の重複チェック
     $stmt = $dbh->prepare('SELECT COUNT(*) FROM details WHERE name = :name AND office_id = :office_id');
     $stmt->bindValue(':name', $name, PDO::PARAM_STR);
     $stmt->bindValue(':office_id', $office_id, PDO::PARAM_INT);
@@ -46,13 +47,25 @@ try {
     }
 
     // データの挿入
-    $stmt = $dbh->prepare('INSERT INTO details (account_id, office_id, name, identifier, note) VALUES (:account_id, :office_id, :name, :identifier, :note)');
+    $stmt = $dbh->prepare('INSERT INTO details (account_id, office_id, name, identifier, note, sort_order) VALUES (:account_id, :office_id, :name, :identifier, :note, :sort_order)');
     $stmt->bindValue(':account_id', $account_id, PDO::PARAM_INT);
-    $stmt->bindValue(':office_id', $office_id, PDO::PARAM_INT); // 営業所IDを挿入
+    $stmt->bindValue(':office_id', $office_id, PDO::PARAM_INT);
     $stmt->bindValue(':name', $name, PDO::PARAM_STR);
     $stmt->bindValue(':identifier', $identifier, PDO::PARAM_STR);
     $stmt->bindValue(':note', $note, PDO::PARAM_STR);
+    $stmt->bindValue(':sort_order', $sort_order, PDO::PARAM_INT);
     $stmt->execute();
+
+    // ログ記録
+    $newId = $dbh->lastInsertId();
+    logAudit($dbh, 'detail', $newId, 'create', [
+        'msg' => 'New detail created',
+        'name' => $name,
+        'identifier' => $identifier,
+        'office_id' => $office_id,
+        'account_id' => $account_id,
+        'sort_order' => $sort_order
+    ]);
 
     $_SESSION['success'] = '正常に登録されました。';
     header('Location: detail.php');

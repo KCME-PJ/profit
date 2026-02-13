@@ -1,5 +1,7 @@
 <?php
+session_start();
 require_once '../includes/database.php';
+require_once '../includes/logger.php';
 
 // セッションが開始されていない場合は開始
 if (session_status() === PHP_SESSION_NONE) {
@@ -16,6 +18,7 @@ try {
     $note = trim($_POST['note'] ?? '');
     $account_id = $_POST['account_id'] ?? null;
     $office_id = $_POST['office_id'] ?? null;
+    $sort_order = (isset($_POST['sort_order']) && $_POST['sort_order'] !== '') ? (int)$_POST['sort_order'] : 100;
 
     // 入力チェック
     if (empty($id) || empty($detail_name) || empty($detail_identifier) || empty($account_id) || empty($office_id)) {
@@ -35,7 +38,6 @@ try {
     }
 
     // 2. 詳細名の重複チェック（営業所内でチェック、自分自身は除く）
-    // ★修正: office_id も条件に加え、同じ営業所内でのみ名前重複を禁止する
     $stmt = $dbh->prepare('SELECT id FROM details WHERE name = :name AND office_id = :office_id AND id != :id');
     $stmt->execute([
         ':name' => $detail_name,
@@ -46,9 +48,8 @@ try {
         throw new Exception('この営業所内ですでに同じ詳細名が使用されています。');
     }
 
-    // データの更新
     $sql = "UPDATE details 
-            SET name = :name, identifier = :identifier, note = :note, account_id = :account_id, office_id = :office_id
+            SET name = :name, identifier = :identifier, note = :note, account_id = :account_id, office_id = :office_id, sort_order = :sort_order
             WHERE id = :id";
     $stmt = $dbh->prepare($sql);
     $stmt->execute([
@@ -57,7 +58,18 @@ try {
         ':note' => $note,
         ':account_id' => $account_id,
         ':office_id' => $office_id,
+        ':sort_order' => $sort_order,
         ':id' => $id
+    ]);
+
+    // ログ記録
+    logAudit($dbh, 'detail', $id, 'update', [
+        'msg' => 'Detail updated',
+        'name' => $detail_name,
+        'identifier' => $detail_identifier,
+        'office_id' => $office_id,
+        'account_id' => $account_id,
+        'sort_order' => $sort_order
     ]);
 
     // 成功時
@@ -67,7 +79,7 @@ try {
 } catch (Exception $e) {
     // エラー時
     $_SESSION['error'] = $e->getMessage();
-    // 入力値を保持してリダイレクト（フォーム側で復元処理がある場合）
+    // 入力値を保持してリダイレクト
     $_SESSION['form_data'] = [
         'id' => $id ?? '',
         'detail_name' => $detail_name ?? '',
