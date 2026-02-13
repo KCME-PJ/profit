@@ -1,39 +1,32 @@
 <?php
-require_once '../includes/database.php'; // DB接続ファイル
-require_once 'validate_account.php';     // バリデーションファイルを読み込み
+require_once '../includes/database.php';
+require_once 'validate_account.php';
+require_once '../includes/logger.php';
 
 session_start();
 
-// POSTデータが送信されているか確認
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // バリデーションチェックを実行
-    // $_POST の内容（account_name, account_identifier, note）を渡してチェック
+    // バリデーションチェック
     $errors = validateAccountData($_POST);
 
-    // エラーが1つでもあれば、登録処理を中断して戻る
     if (!empty($errors)) {
-        // エラーメッセージ配列を改行区切りの文字列にしてセッションに保存
         $_SESSION['error'] = implode('<br>', $errors);
-
-        // 入力値を保持するためにセッションに保存しておくと親切（任意）
         $_SESSION['form_inputs'] = $_POST;
-
-        header('Location: account.php'); // 元のフォームにリダイレクト
+        header('Location: account.php');
         exit;
     }
 
-    // --- ここから下はバリデーションを通過したデータのみが来る ---
-
-    // フォームデータの取得（trimで前後の余分な空白を削除して取得）
+    // フォームデータの取得
     $account_name = trim($_POST['account_name']);
     $account_identifier = trim($_POST['account_identifier']);
     $note = isset($_POST['note']) ? trim($_POST['note']) : '';
+    $sort_order = (isset($_POST['sort_order']) && $_POST['sort_order'] !== '') ? (int)$_POST['sort_order'] : 100;
 
     try {
         $db = getDb();
 
-        // 勘定科目名の重複チェック
+        // 重複チェック
         $stmt = $db->prepare("SELECT COUNT(*) FROM accounts WHERE name = :name");
         $stmt->bindValue(':name', $account_name, PDO::PARAM_STR);
         $stmt->execute();
@@ -41,19 +34,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($count > 0) {
             $_SESSION['error'] = '同じ勘定科目名が既に登録されています。';
-            header('Location: account.php');  // 元のフォームにリダイレクト
+            header('Location: account.php');
             exit;
         }
 
-        // データベースに新しい勘定科目を追加
-        $stmt = $db->prepare("INSERT INTO accounts (name, identifier, note) VALUES (:name, :identifier, :note)");
+        $stmt = $db->prepare("INSERT INTO accounts (name, identifier, note, sort_order) VALUES (:name, :identifier, :note, :sort_order)");
         $stmt->bindValue(':name', $account_name, PDO::PARAM_STR);
         $stmt->bindValue(':identifier', $account_identifier, PDO::PARAM_STR);
         $stmt->bindValue(':note', $note, PDO::PARAM_STR);
+        $stmt->bindValue(':sort_order', $sort_order, PDO::PARAM_INT);
         $stmt->execute();
 
-        $_SESSION['success'] = '勘定科目を登録しました。'; // 成功メッセージ
-        header('Location: account_list.php');  // 登録後はリストページにリダイレクト
+        // ログ記録
+        $newId = $db->lastInsertId();
+        logAudit($db, 'account', $newId, 'create', [
+            'msg' => 'New account created',
+            'name' => $account_name,
+            'identifier' => $account_identifier,
+            'sort_order' => $sort_order
+        ]);
+
+        $_SESSION['success'] = '勘定科目を登録しました。';
+        header('Location: account_list.php');
         exit;
     } catch (PDOException $e) {
         $_SESSION['error'] = 'データベースエラーが発生しました: ' . $e->getMessage();

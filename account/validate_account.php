@@ -6,10 +6,8 @@ function validateAccountData($data)
     // 入力値の前後から空白を除去
     $name = isset($data['account_name']) ? trim($data['account_name']) : '';
     $identifier = isset($data['account_identifier']) ? trim($data['account_identifier']) : '';
-
-    // ★修正: カラム名に合わせて 'note' で統一
     $note = isset($data['note']) ? trim($data['note']) : '';
-
+    $sort_order = isset($data['sort_order']) ? trim($data['sort_order']) : '';
 
     // --- 勘定科目名のバリデーション ---
     if ($name === '') {
@@ -30,6 +28,11 @@ function validateAccountData($data)
     // --- 説明のバリデーション ---
     if ($note !== '' && mb_strlen($note) > 255) {
         $errors['note'] = '説明は255文字以内で入力してください。';
+    }
+
+    // --- 表示順のバリデーション ---
+    if ($sort_order !== '' && !ctype_digit($sort_order)) {
+        $errors['sort_order'] = '表示順は半角整数で入力してください。';
     }
 
     return $errors;

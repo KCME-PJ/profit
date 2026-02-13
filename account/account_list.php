@@ -1,4 +1,7 @@
-<?php session_start(); ?>
+<?php
+require_once '../includes/auth_check.php';
+require_once '../includes/database.php';
+?>
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -80,7 +83,7 @@
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -90,11 +93,11 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
                             aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="../profile/password_edit.php">パスワード変更</a></li>
+                            <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -102,11 +105,9 @@
         </div>
     </nav>
     <?php
-    require_once '../includes/database.php';
-
     try {
         $dbh = getDb();
-        $sql = "SELECT * FROM accounts";
+        $sql = "SELECT * FROM accounts ORDER BY sort_order ASC, id ASC";
         $stmt = $dbh->prepare($sql);
         $stmt->execute();
         $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -137,6 +138,7 @@
             <thead class="table-light">
                 <tr>
                     <th>ID</th>
+                    <th style="width: 80px;">表示順</th>
                     <th>勘定科目名</th>
                     <th>一意識別子</th>
                     <th>説明</th>
@@ -147,6 +149,7 @@
                 <?php foreach ($accounts as $account): ?>
                     <tr>
                         <td><?= htmlspecialchars($account['id']) ?></td>
+                        <td class="text-end"><?= htmlspecialchars($account['sort_order']) ?></td>
                         <td><?= htmlspecialchars($account['name']) ?></td>
                         <td><?= htmlspecialchars($account['identifier']) ?></td>
                         <td><?= htmlspecialchars($account['note']) ?></td>
@@ -189,6 +192,13 @@
                                 <input type="text" class="form-control" id="editAccountIdentifier-<?= $account['id'] ?>" name="account_identifier"
                                     value="<?= htmlspecialchars($account['identifier']) ?>" pattern="[a-zA-Z0-9]+" title="半角英数字のみを入力してください" required>
                             </div>
+
+                            <div class="mb-3">
+                                <label for="editSortOrder-<?= $account['id'] ?>" class="form-label">表示順</label>
+                                <input type="number" class="form-control" id="editSortOrder-<?= $account['id'] ?>" name="sort_order"
+                                    value="<?= htmlspecialchars($account['sort_order']) ?>">
+                            </div>
+
                             <div class="mb-3">
                                 <label for="editNote-<?= $account['id'] ?>" class="form-label">説明 (任意)</label>
                                 <textarea class="form-control" id="editNote-<?= $account['id'] ?>" name="note"
@@ -215,7 +225,7 @@
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="account_id" id="deleteAccountId" value="">
-                        本当に <span id="deleteAccountName"></span> を削除してもよろしいですか？
+                        本当に <span id="deleteAccountName" class="fw-bold"></span> を削除してもよろしいですか？
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
@@ -244,8 +254,9 @@
                 },
                 pageLength: 10,
                 order: [
-                    [0, "asc"]
-                ]
+                    [1, "asc"]
+                ],
+                stateSave: true,
             });
         });
     </script>

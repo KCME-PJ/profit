@@ -1,5 +1,5 @@
 <?php
-session_start(); // セッション開始
+require_once '../includes/auth_check.php';
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -78,7 +78,7 @@ session_start(); // セッション開始
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -88,11 +88,11 @@ session_start(); // セッション開始
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
                             aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="../profile/password_edit.php">パスワード変更</a></li>
+                            <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -101,7 +101,6 @@ session_start(); // セッション開始
     </nav>
 
     <div class="container mt-5">
-        <!-- エラーメッセージや成功メッセージの表示 -->
         <?php if (isset($_SESSION['error'])): ?>
             <div class="alert alert-danger">
                 <?php echo htmlspecialchars($_SESSION['error']); ?>
@@ -122,6 +121,13 @@ session_start(); // セッション開始
                     pattern="[a-zA-Z0-9]+" title="一意識別子は半角英数字のみ入力可能です" required>
                 <div class="form-text">半角英数字で入力してください（例: zatsukyu）</div>
             </div>
+
+            <div class="mb-3">
+                <label for="sortOrder" class="form-label">表示順</label>
+                <input type="number" class="form-control" id="sortOrder" name="sort_order" value="100" placeholder="例: 10">
+                <div class="form-text">小さい数字ほど詳細リストの上位に表示されます（デフォルト: 100）</div>
+            </div>
+
             <div class="mb-3">
                 <label for="note" class="form-label">説明 (任意)</label>
                 <textarea class="form-control" id="note" name="note" rows="3"
