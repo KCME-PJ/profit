@@ -106,8 +106,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         details.forEach(d => {
             const tr = document.createElement('tr');
+
+            // 営業所名がある場合はバッジを表示し、2段組みにするHTMLを作成
+            let nameCellHtml = '';
+            if (d.office_name) {
+                nameCellHtml += `<span class="badge bg-light text-dark border mb-1" style="font-size:0.75rem;">${d.office_name}</span><br>`;
+            }
+            nameCellHtml += `<span class="fw-medium">${d.detail_name}</span>`;
+
             tr.innerHTML = `
-                        <td>${d.detail_name}</td> <td>${d.month_name}</td>  <td class="text-end">${formatNum(d.cp)}</td>
+                        <td>${nameCellHtml}</td> 
+                        <td>${d.month_name}</td>  
+                        <td class="text-end">${formatNum(d.cp)}</td>
                         <td class="text-end">${formatNum(d.plan)}</td>
                         <td class="text-end">${formatNum(d.result)}</td>
                         <td class="text-end ${getDiffClass(d.plan_diff)}">${formatNum(d.plan_diff)}</td>
