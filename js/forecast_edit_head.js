@@ -1,12 +1,13 @@
 document.addEventListener('DOMContentLoaded', function () {
     const yearSelect = document.getElementById('yearSelect');
     const monthSelect = document.getElementById('monthSelect');
+    const officeSelect = document.getElementById('officeSelect');
     const monthButtonsContainer = document.getElementById('monthButtonsContainer');
 
     // PHPから渡された登録済みデータ
     const yearMonthData = window.yearMonthData;
 
-    // 現在の年度のステータス一覧を保持する変数を定義
+    // 現在の年度のステータス一覧を保持する変数
     let currentYearStatuses = {};
 
     /**
@@ -36,94 +37,122 @@ document.addEventListener('DOMContentLoaded', function () {
      * @param {string} year 選択された年度
      */
     function updateForecastStatusButtons(year) {
-        // 全ボタンを初期化
-        document.querySelectorAll('#monthButtonsContainer button').forEach(button => {
-            button.classList.remove('btn-primary', 'btn-success');
-            button.classList.add('btn-secondary');
-            button.disabled = true;
-            button.replaceWith(button.cloneNode(true));
-        });
-
         if (!year) return;
 
-        // 新しいボタンに再度参照し直す
+        // 現在選択中の営業所IDを取得
+        const currentOfficeId = officeSelect ? officeSelect.value : '';
+
+        // ボタンの参照を取得
         const monthButtons = document.querySelectorAll('#monthButtonsContainer button');
 
-        // ステータス取得
-        fetch(`get_forecast_status.php?year=${year}`)
+        // ステータス取得時に office_id も渡す
+        fetch(`get_forecast_status.php?year=${year}&office_id=${currentOfficeId}`)
             .then(response => response.json())
             .then(statuses => {
-
-                // 取得したステータスをグローバル変数に保存
                 currentYearStatuses = statuses;
 
-                // PHP側で返される statuses: {1: 'draft', 2: 'fixed', ...}
                 monthButtons.forEach(button => {
-                    const month = parseInt(button.textContent.replace('月', ''), 10);
+                    const monthText = button.textContent.trim();
+                    const month = parseInt(monthText.replace('月', ''), 10);
                     if (isNaN(month)) return;
 
                     const status = statuses[month] || 'none';
                     button.disabled = false;
-                    button.className = 'btn btn-sm me-1 mb-1'; // クラス初期化
+
+                    // クラスをリセットして適用
+                    button.className = 'btn btn-sm me-1 mb-1 month-btn';
 
                     if (status === 'fixed') {
-                        button.classList.add('btn-success');
+                        button.classList.add('btn-success');   // 確定済：緑
                     } else if (status === 'draft' || status === 'registered') {
-                        button.classList.add('btn-primary');
+                        button.classList.add('btn-primary');   // 登録済：青
                     } else {
-                        button.classList.add('btn-secondary');
+                        button.classList.add('btn-secondary'); // 未登録：グレー
                     }
-
-                    // 月ボタンクリック時のイベント再設定
-                    button.addEventListener('click', function () {
-                        monthSelect.value = month;
-                        monthSelect.dispatchEvent(new Event('change'));
-                    });
                 });
             })
-            .catch(error => {
-                console.error('ステータス取得エラー:', error);
-                currentYearStatuses = {}; // エラー時はリセット
-            });
+            .catch(error => console.error('ステータス取得エラー:', error));
     }
 
     // ---------------------------------------------
     // --- イベントリスナー ---
     // ---------------------------------------------
 
-    // 年度選択時の処理
-    yearSelect.addEventListener('change', function () {
-        const selectedYear = yearSelect.value;
-        if (!selectedYear) return;
+    // 1. 年度変更時
+    if (yearSelect) {
+        yearSelect.addEventListener('change', function () {
+            const selectedYear = this.value;
+            updateMonths();
+            updateForecastStatusButtons(selectedYear);
 
-        updateMonths();
-        updateForecastStatusButtons(selectedYear);
+            if (window.history.replaceState) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('year', selectedYear);
+                url.searchParams.delete('month');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        });
+    }
 
-        // URLパラメータを更新 (リロード時に year パラメータを維持するため)
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            url.searchParams.set('year', selectedYear);
-            url.searchParams.delete('month'); // 月は一旦リセット
-            window.history.replaceState({}, document.title, url.pathname + url.search);
-        }
-    });
+    // 2. 営業所変更時にもボタン色を更新する
+    if (officeSelect) {
+        officeSelect.addEventListener('change', function () {
+            const selectedYear = yearSelect.value;
+            if (selectedYear) {
+                updateForecastStatusButtons(selectedYear);
+            }
+        });
+    }
+
+    // 3. 月ボタンクリック時の処理 (イベント委譲)
+    if (monthButtonsContainer) {
+        monthButtonsContainer.addEventListener('click', function (e) {
+            if (e.target.tagName === 'BUTTON') {
+                const btn = e.target;
+                const monthText = btn.textContent.trim();
+                const month = parseInt(monthText.replace('月', ''), 10);
+
+                if (!isNaN(month) && monthSelect) {
+                    // プルダウンにない月（未登録）の場合の追加処理
+                    let optionExists = false;
+                    for (let i = 0; i < monthSelect.options.length; i++) {
+                        if (parseInt(monthSelect.options[i].value) === month) {
+                            optionExists = true;
+                            monthSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    if (!optionExists) {
+                        const opt = document.createElement('option');
+                        opt.value = month;
+                        opt.text = month + '月';
+                        monthSelect.add(opt);
+                        monthSelect.value = month;
+                    }
+                    // changeイベント発火
+                    monthSelect.dispatchEvent(new Event('change'));
+                }
+            }
+        });
+    }
 
     // ---------------------------------------------
     // --- 初期ロード処理 ---
     // ---------------------------------------------
 
     const urlParams = new URLSearchParams(window.location.search);
-    const initialYear = urlParams.get('year');
-    const initialMonth = urlParams.get('month');
+    const initialYear = urlParams.get('year') || (yearSelect ? yearSelect.value : null);
 
     if (initialYear) {
-        yearSelect.value = initialYear;
-        updateMonths();
-        updateForecastStatusButtons(initialYear);
+        if (yearSelect) yearSelect.value = initialYear;
+        updateMonths(); // 初期ロード時もプルダウン構築を実行
 
-        if (initialMonth) {
+        const initialMonth = urlParams.get('month');
+        if (initialMonth && monthSelect) {
             monthSelect.value = initialMonth;
         }
+
+        updateForecastStatusButtons(initialYear);
     }
 
     // ------------------------------
@@ -139,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const month = monthSelect.value;
 
             if (!year || !month) {
-                console.error('年度と月を選択してください。');
+                alert('年度と月を選択してください。');
                 return;
             }
 
@@ -148,8 +177,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // 1. 未登録データは出力させない
             if (status === 'none') {
-                console.error('この月のデータは未登録のため出力できません。');
-                // alert('この月のデータは未登録のため出力できません。');
+                alert('この月のデータは未登録のため出力できません。');
                 return;
             }
 
@@ -164,14 +192,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // 3. ステータスに応じて警告または実行
             if (status === 'draft' || status === 'registered') {
-                // Draftの場合、警告を表示 (confirmが使える前提)
                 if (confirm('このデータは未確定 (Draft) です。\n未確定のデータを出力しますか？')) {
-                    // ユーザーが「OK」を押した場合のみ実行
                     window.location.href = url;
                 }
-                // (ユーザーが「キャンセル」を押した場合は何もしない)
             } else if (status === 'fixed') {
-                // Fixedの場合は警告なしで実行
                 window.location.href = url;
             }
         });

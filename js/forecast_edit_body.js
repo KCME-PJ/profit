@@ -3,18 +3,29 @@ document.addEventListener('DOMContentLoaded', function () {
     const yearSelect = document.getElementById('yearSelect');
     const monthSelect = document.getElementById('monthSelect');
 
-    // --- 営業所別入力要素 ---
+    const userRole = document.body.getAttribute('data-user-role') || 'viewer';
+    const isAdmin = (userRole === 'admin');
+
     const officeSelect = document.getElementById('officeSelect');
     const hiddenTime = document.getElementById('officeTimeData');
     const hourlyRateInput = document.getElementById('hourlyRate');
 
-    // 総時間表示用エレメント & 賃率隠しフィールド
     const totalHoursInput = document.getElementById('totalHours');
-    const hiddenHourlyRateInput = document.getElementById('hiddenHourlyRate'); // 追加
+    const hiddenHourlyRateInput = document.getElementById('hiddenHourlyRate');
 
-    // ボタン
-    const submitBtnUpdate = document.querySelector('.register-button1'); // 修正ボタン
-    const submitBtnFixed = document.querySelector('.register-button2');  // 確定ボタン
+    // ボタン類
+    const submitBtnUpdate = document.querySelector('.register-button1');
+    const submitBtnFixed = document.querySelector('.register-button2');
+    const btnReject = document.getElementById('btnReject');
+
+    // Admin Controls
+    const adminParentControls = document.getElementById('adminParentControls');
+    const btnParentFix = document.getElementById('forecastParentFixConfirmBtn');
+    const btnParentUnlock = document.getElementById('forecastParentUnlockConfirmBtn');
+    const parentFixedLabel = document.getElementById('parentFixedLabel');
+    const unfixedBadge = document.getElementById('unfixedBadge');
+    const unfixedCountSpan = document.getElementById('unfixedCount');
+    const unfixedOfficeListUl = document.getElementById('unfixedOfficeList');
 
     const timeFields = {
         standard_hours: document.getElementById('standardHours'),
@@ -27,418 +38,574 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let officeTimeDataLocal = {};
     let currentOfficeId = officeSelect ? officeSelect.value : null;
-    let initialFormData = ""; // 変更検知用
+    let initialFormData = "";
 
-    // --- ヘルパー関数: 小数点誤差を解消する (小数点第2位まで) ---
+    // グローバルステータス管理
+    let isAllFixedGlobal = false;
+    let unfixedOfficesGlobal = [];
+
+    // エラー表示用の箱を安全に取得（なければ作る）
+    function getOrCreateErrorAlert() {
+        let alertDiv = document.getElementById('errorAlert');
+        if (!alertDiv) {
+            alertDiv = document.createElement('div');
+            alertDiv.id = 'errorAlert';
+            if (form && form.parentNode) {
+                form.parentNode.insertBefore(alertDiv, form);
+            }
+        }
+        return alertDiv;
+    }
+
     function roundTo2(num) {
         if (num === '' || num === null || num === undefined) return '';
         const f = parseFloat(num);
         if (isNaN(f)) return '';
-        // 100倍して四捨五入し、100で割ることで小数点第2位までに丸める
         return Math.round(f * 100) / 100;
     }
 
-    // 1. 初期ロード
     try {
         officeTimeDataLocal = JSON.parse(hiddenTime.value || "{}");
     } catch (e) {
         console.error('初期データのパースに失敗:', e);
     }
 
-    // ----------------------------------------------------------------
-    // 変更検知 (Dirty Check) 用の関数
-    // ----------------------------------------------------------------
+    const BACKUP_KEY = 'forecast_edit_backup_data';
+
+    function backupFormData() {
+        if (isAdmin) return; // 管理者はバックアップ不要
+
+        if (currentOfficeId && currentOfficeId !== 'all') {
+            captureCurrentOfficeTime(currentOfficeId);
+        }
+        const currentData = {
+            officeTimeData: officeTimeDataLocal,
+            inputs: {},
+            hourlyRate: hourlyRateInput ? hourlyRateInput.value : '',
+            activeOfficeId: currentOfficeId
+        };
+        document.querySelectorAll('input, select, textarea').forEach(input => {
+            const ignoreIds = ['monthlyForecastId', 'fcStatus', 'updatedAt', 'bulkJsonData', 'officeTimeData', 'officeSelect', 'yearSelect', 'monthSelect', 'hourlyRate', 'hiddenHourlyRate', 'forecastMode', 'targetOfficeId'];
+            const timeFieldIds = ['standardHours', 'overtimeHours', 'transferred_hours', 'fulltimeCount', 'contractCount', 'dispatchCount'];
+
+            if (input.id && (ignoreIds.includes(input.id) || timeFieldIds.includes(input.id))) return;
+            if (input.type === 'hidden' && !input.classList.contains('detail-input')) return;
+
+            const key = input.name || input.id;
+            if (key) currentData.inputs[key] = input.value;
+        });
+
+        const backupPackage = {
+            current: currentData,
+            initial: initialFormData
+        };
+        sessionStorage.setItem(BACKUP_KEY, JSON.stringify(backupPackage));
+    }
+
+    function restoreFormData() {
+        if (isAdmin) return;
+
+        const json = sessionStorage.getItem(BACKUP_KEY);
+        if (!json) return;
+        try {
+            const pkg = JSON.parse(json);
+            const current = pkg.current;
+            const initial = pkg.initial ? JSON.parse(pkg.initial) : { officeTimeDataLocal: {}, inputs: {} };
+            const initialTimeData = initial.officeTimeDataLocal || {};
+
+            if (current.activeOfficeId && officeSelect) {
+                officeSelect.value = current.activeOfficeId;
+                currentOfficeId = current.activeOfficeId;
+            }
+
+            if (current.officeTimeData) {
+                for (const oid in current.officeTimeData) {
+                    if (!current.officeTimeData[oid]) continue;
+                    if (!officeTimeDataLocal[oid]) officeTimeDataLocal[oid] = {};
+                    for (const key in current.officeTimeData[oid]) {
+                        const valCurrent = current.officeTimeData[oid][key];
+                        const valInitial = (initialTimeData[oid]) ? initialTimeData[oid][key] : undefined;
+                        if (String(valCurrent) !== String(valInitial ?? '')) {
+                            officeTimeDataLocal[oid][key] = valCurrent;
+                        }
+                    }
+                }
+                if (currentOfficeId) renderOfficeToDom(currentOfficeId);
+            }
+            if (current.hourlyRate !== undefined && hourlyRateInput) {
+                if (current.hourlyRate !== '') {
+                    hourlyRateInput.value = current.hourlyRate;
+                    if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = current.hourlyRate;
+                }
+            }
+            if (current.inputs) {
+                for (const [key, value] of Object.entries(current.inputs)) {
+                    let input = document.querySelector(`[name="${key}"]`);
+                    if (!input) input = document.getElementById(key);
+                    if (input) input.value = value;
+                }
+            }
+            updateTotals();
+            updateButtonState();
+            filterDetailsByOffice();
+
+            const errorAlert = getOrCreateErrorAlert();
+            if (errorAlert) {
+                const msg = document.createElement('div');
+                msg.innerHTML = '<strong>※復元されたデータがあります。</strong>';
+                msg.className = 'mt-2 text-dark bg-warning-subtle p-2 rounded border border-warning';
+                errorAlert.appendChild(msg);
+            }
+        } catch (e) {
+            console.error('復元エラー', e);
+        }
+        sessionStorage.removeItem(BACKUP_KEY);
+    }
+
+    function clearBackup() {
+        sessionStorage.removeItem(BACKUP_KEY);
+    }
+
+    // --- Dirty Check ---
     function getFormDataString() {
         if (currentOfficeId && currentOfficeId !== 'all') {
             captureCurrentOfficeTime(currentOfficeId);
         }
-
         const inputs = document.querySelectorAll('input, select, textarea');
         const data = {};
-
-        // 比較から除外するID
-        const ignoreIds = [
-            'officeTimeData',
-            'officeSelect',
-            'hourlyRate',
-            'hiddenHourlyRate', // 変更検知対象外
-            'totalHours',       // 自動計算項目のため除外
-            'standardHours',
-            'overtimeHours',
-            'transferred_hours',
-            'fulltimeCount',
-            'contractCount',
-            'dispatchCount',
-            'bulkJsonData', // 自動生成のため除外
-            'forecastMode', // actionタイプのため除外
-            'fcStatus'      // ステータス自体は比較対象外
-        ];
+        const ignoreIds = ['officeTimeData', 'officeSelect', 'hourlyRate', 'hiddenHourlyRate', 'totalHours', 'standardHours', 'overtimeHours', 'transferred_hours', 'fulltimeCount', 'contractCount', 'dispatchCount', 'bulkJsonData', 'forecastMode', 'fcStatus', 'updatedAt', 'targetOfficeId'];
 
         inputs.forEach(input => {
             if (ignoreIds.includes(input.id)) return;
-            // hiddenフィールドのうち、手動で変更しないものは除外
             if (input.type === 'hidden' && !input.classList.contains('detail-input')) return;
-
-            if (input.name) {
-                data[input.name] = input.value;
-            }
+            if (input.name) data[input.name] = input.value;
         });
 
-        // 時間管理データ
         data['officeTimeDataLocal'] = officeTimeDataLocal;
+        if (hourlyRateInput) data['hourlyRate'] = hourlyRateInput.value;
 
         return JSON.stringify(data);
     }
 
     function updateButtonState() {
-        if (!submitBtnUpdate || !submitBtnFixed) return;
-
-        // 確定済(fixed)チェック (Forecast用のID: fcStatus)
+        const fcIdInput = document.getElementById('monthlyForecastId');
+        const hasData = (fcIdInput && fcIdInput.value);
         const statusInput = document.getElementById('fcStatus');
-        const currentStatus = statusInput ? statusInput.value : '';
+        const parentStatus = statusInput ? statusInput.value : '';
+        const isAllSelected = (officeSelect && officeSelect.value === 'all');
 
-        if (currentStatus === 'fixed') {
+        if (isAdmin) {
+            document.querySelectorAll('input, select, textarea').forEach(el => {
+                if (el.type === 'hidden') return;
+                if (el.id !== 'yearSelect' && el.id !== 'monthSelect' && el.id !== 'officeSelect') {
+                    el.disabled = true;
+                }
+            });
+
+            // 1. 親コントロール（確定・解除ボタン・バッジ）の制御
+            if (adminParentControls) {
+                adminParentControls.style.display = 'inline-flex';
+                const showParentBtns = isAllSelected;
+
+                if (parentStatus === 'fixed') {
+                    if (btnParentFix) btnParentFix.style.display = 'none';
+                    if (btnParentUnlock) btnParentUnlock.style.display = showParentBtns ? 'inline-block' : 'none';
+                    if (parentFixedLabel) parentFixedLabel.style.display = 'inline-block';
+                    if (unfixedBadge) unfixedBadge.style.display = 'none';
+                } else {
+                    if (btnParentFix) {
+                        btnParentFix.style.display = showParentBtns ? 'inline-block' : 'none';
+                        btnParentFix.disabled = !isAllFixedGlobal || !hasData;
+                    }
+                    if (btnParentUnlock) btnParentUnlock.style.display = 'none';
+                    if (parentFixedLabel) parentFixedLabel.style.display = 'none';
+                    if (unfixedBadge) {
+                        unfixedBadge.style.display = (unfixedOfficesGlobal.length > 0) ? 'inline-block' : 'none';
+                    }
+                }
+            }
+
+            // 2. 差し戻しボタン（個別営業所用）の制御
+            if (btnReject) {
+                if (isAllSelected) {
+                    btnReject.style.display = 'none';
+                } else {
+                    if (hasData && parentStatus === 'fixed') {
+                        btnReject.style.display = 'none';
+                    } else if (hasData) {
+                        let childStatus = 'draft';
+                        if (officeTimeDataLocal[currentOfficeId] && officeTimeDataLocal[currentOfficeId].status) {
+                            childStatus = officeTimeDataLocal[currentOfficeId].status;
+                        }
+                        if (childStatus === 'fixed') {
+                            btnReject.style.display = 'inline-block';
+                        } else {
+                            btnReject.style.display = 'none';
+                        }
+                    } else {
+                        btnReject.style.display = 'none';
+                    }
+                }
+            }
+            return;
+        }
+
+        if (!submitBtnUpdate || !submitBtnFixed) return;
+        const lockedStatuses = ['fixed', 'approved', 'registered'];
+
+        if (!hasData || lockedStatuses.includes(parentStatus)) {
             submitBtnUpdate.disabled = true;
             submitBtnFixed.disabled = true;
             return;
         }
 
-        const isAllSelected = (officeSelect && officeSelect.value === 'all');
+        if (initialFormData === "") return;
+
+        let isChildFixed = false;
+        if (currentOfficeId && officeTimeDataLocal[currentOfficeId]) {
+            if (officeTimeDataLocal[currentOfficeId].status === 'fixed') {
+                isChildFixed = true;
+            }
+        }
+
         const currentFormData = getFormDataString();
         const isChanged = (initialFormData !== currentFormData);
-
-        // 修正ボタン: 「全社」以外で、かつ「変更がある」場合のみ有効
-        const canUpdate = !isAllSelected && isChanged;
+        const canUpdate = !isAllSelected && isChanged && !isChildFixed;
         submitBtnUpdate.disabled = !canUpdate;
-
-        // 確定ボタン: 「変更がない（保存済み）」であれば有効 (全社表示でもOK)
-        const canFix = !isChanged;
+        const canFix = !isChanged && !isAllSelected && !isChildFixed;
         submitBtnFixed.disabled = !canFix;
     }
 
     function initDirtyCheck() {
-        // 全営業所のデータをあらかじめ正規化（数値変換）しておく
-        const floatKeys = ['standard_hours', 'overtime_hours', 'transferred_hours', 'hourly_rate'];
+        const floatKeys = ['standard_hours', 'overtime_hours', 'transferred_hours'];
         const intKeys = ['fulltime_count', 'contract_count', 'dispatch_count'];
-
         for (const oid in officeTimeDataLocal) {
             if (!officeTimeDataLocal[oid]) continue;
-
             [...floatKeys, ...intKeys].forEach(key => {
                 let val = officeTimeDataLocal[oid][key];
-
                 if (val === undefined || val === null || val === '') {
                     officeTimeDataLocal[oid][key] = '';
                 } else {
-                    if (floatKeys.includes(key)) {
-                        // 初期化時にも丸めておく
-                        officeTimeDataLocal[oid][key] = roundTo2(val);
-                    } else {
-                        officeTimeDataLocal[oid][key] = parseInt(val) || 0;
-                    }
+                    if (floatKeys.includes(key)) officeTimeDataLocal[oid][key] = roundTo2(val);
+                    else officeTimeDataLocal[oid][key] = parseInt(val) || 0;
                 }
             });
         }
-
         if (currentOfficeId && currentOfficeId !== 'all') {
             captureCurrentOfficeTime(currentOfficeId);
         }
-
-        // 初期値を保存
         initialFormData = getFormDataString();
-
-        // ボタン状態を更新
         updateButtonState();
     }
 
-
-    // ----------------------------------------------------------------
-    // 営業所フィルタリング関数
-    // ----------------------------------------------------------------
+    // --- UI Control ---
     function filterDetailsByOffice() {
         if (!officeSelect) return;
-
         const selectedOfficeId = officeSelect.value;
         const detailRows = document.querySelectorAll('.detail-row');
 
         detailRows.forEach(row => {
             const rowOfficeId = row.getAttribute('data-office-id');
-
-            // 表示条件: 全社 or 共通 or 一致
             const isMatch = (selectedOfficeId === 'all' || rowOfficeId === 'common' || rowOfficeId === selectedOfficeId);
 
             if (isMatch) {
                 row.style.display = '';
-
-                // 表示されていても、「全社(all)」が選択されている場合は編集不可にする
-                const shouldDisable = (selectedOfficeId === 'all');
+                const isGloballyDisabled = document.getElementById('standardHours').disabled;
+                const shouldDisable = isAdmin || (selectedOfficeId === 'all') || isGloballyDisabled;
 
                 row.querySelectorAll('input').forEach(input => {
-                    input.disabled = shouldDisable;
+                    if (input.type !== 'hidden') input.disabled = shouldDisable;
                 });
             } else {
                 row.style.display = 'none';
-                // 非表示＝disabled化
-                row.querySelectorAll('input').forEach(input => input.disabled = true);
+                row.querySelectorAll('input').forEach(input => {
+                    if (input.type !== 'hidden') input.disabled = true;
+                });
             }
         });
-
-        // 合計再計算
         updateTotals();
     }
 
-
-    // ----------------------------------------------------------------
-    // 時間管理データ制御
-    // ----------------------------------------------------------------
     function captureCurrentOfficeTime(oid) {
         if (!oid || oid === 'all') return;
         const data = officeTimeDataLocal[oid] || {};
-
         for (const key in timeFields) {
             const input = timeFields[key];
             if (input) {
                 if (input.value === '') {
                     data[key] = '';
                 } else {
-                    // 入力値を保存する際も丸めておく（計算誤差の蓄積防止）
                     let val = parseFloat(input.value) || 0;
-                    if (key.includes('hours')) {
-                        data[key] = roundTo2(val);
-                    } else {
-                        data[key] = parseInt(input.value) || 0;
-                    }
+                    if (key.includes('hours')) data[key] = roundTo2(val);
+                    else data[key] = parseInt(input.value) || 0;
                 }
             }
         }
-
         if (hourlyRateInput) {
-            if (hourlyRateInput.value === '') {
-                data.hourly_rate = '';
-            } else {
-                data.hourly_rate = parseFloat(hourlyRateInput.value) || 0;
+            const rateVal = (hourlyRateInput.value === '') ? '' : parseFloat(hourlyRateInput.value) || 0;
+            for (const id in officeTimeDataLocal) {
+                if (!officeTimeDataLocal[id]) officeTimeDataLocal[id] = {};
+                officeTimeDataLocal[id].hourly_rate = rateVal;
             }
         }
-
-        const currentRate = data.hourly_rate;
-        for (const id in officeTimeDataLocal) {
-            if (!officeTimeDataLocal[id]) officeTimeDataLocal[id] = {};
-            officeTimeDataLocal[id].hourly_rate = currentRate;
-        }
-
         officeTimeDataLocal[oid] = data;
     }
 
-    // ----------------------------------------------------------------
-    // 時間管理データ描画
-    // ----------------------------------------------------------------
     function renderOfficeToDom(oid) {
-        if (!oid) return;
+        const statusInput = document.getElementById('fcStatus');
+        const parentStatus = statusInput ? statusInput.value : '';
+        const lockedStatuses = ['fixed', 'approved', 'registered'];
 
-        // --- A. 全社 (all) が選択された場合 ---
+        let isChildFixed = false;
+        if (oid && officeTimeDataLocal[oid] && officeTimeDataLocal[oid].status === 'fixed') {
+            isChildFixed = true;
+        }
+
+        const shouldDisable = isAdmin || lockedStatuses.includes(parentStatus) || isChildFixed;
+
         if (oid === 'all') {
-            let totals = {
-                standard_hours: 0,
-                overtime_hours: 0,
-                transferred_hours: 0,
-                fulltime_count: 0,
-                contract_count: 0,
-                dispatch_count: 0
-            };
+            let totals = { standard_hours: 0, overtime_hours: 0, transferred_hours: 0, fulltime_count: 0, contract_count: 0, dispatch_count: 0 };
             let commonRate = '';
+            if (hourlyRateInput && hourlyRateInput.value) {
+                commonRate = hourlyRateInput.value;
+            } else if (hiddenHourlyRateInput && hiddenHourlyRateInput.value) {
+                commonRate = hiddenHourlyRateInput.value;
+            }
 
-            let rateFound = false;
             for (const id in officeTimeDataLocal) {
                 const d = officeTimeDataLocal[id];
                 if (!d) continue;
-
                 totals.standard_hours += parseFloat(d.standard_hours) || 0;
                 totals.overtime_hours += parseFloat(d.overtime_hours) || 0;
                 totals.transferred_hours += parseFloat(d.transferred_hours) || 0;
-
                 totals.fulltime_count += parseInt(d.fulltime_count) || 0;
                 totals.contract_count += parseInt(d.contract_count) || 0;
                 totals.dispatch_count += parseInt(d.dispatch_count) || 0;
-
-                if (!rateFound && d.hourly_rate !== undefined && d.hourly_rate !== '') {
-                    commonRate = d.hourly_rate;
-                    rateFound = true;
-                }
             }
-
             for (const key in timeFields) {
                 if (timeFields[key]) {
-                    // 時間系(hours)の場合は丸め処理を行う
-                    if (key.includes('hours')) {
-                        timeFields[key].value = roundTo2(totals[key]);
-                    } else {
-                        timeFields[key].value = totals[key];
-                    }
-
+                    if (key.includes('hours')) timeFields[key].value = roundTo2(totals[key]);
+                    else timeFields[key].value = totals[key];
                     timeFields[key].disabled = true;
                     timeFields[key].classList.add('bg-light');
                 }
             }
-
             if (hourlyRateInput) {
-                if (hourlyRateInput.value === '' && commonRate !== '') {
-                    hourlyRateInput.value = commonRate;
-                }
+                hourlyRateInput.value = commonRate;
                 hourlyRateInput.disabled = true;
                 hourlyRateInput.classList.add('bg-light');
-
-                // 同期
-                if (hiddenHourlyRateInput) {
-                    hiddenHourlyRateInput.value = hourlyRateInput.value;
-                }
             }
-
             updateTotals();
             return;
         }
 
-        // --- B. 個別の営業所が選択された場合 ---
         const data = officeTimeDataLocal[oid] || {};
-
         for (const key in timeFields) {
             const val = data[key];
             if (timeFields[key]) {
-                // 値をセットする前に丸める
                 const rawVal = (val !== undefined && val !== null && val !== '') ? val : '';
-                // hoursが含まれるキーなら丸め処理、それ以外(人数など)はそのまま
                 timeFields[key].value = key.includes('hours') ? roundTo2(rawVal) : rawVal;
 
-                timeFields[key].disabled = false;
-                timeFields[key].classList.remove('bg-light');
+                timeFields[key].disabled = shouldDisable;
+                if (shouldDisable) {
+                    timeFields[key].classList.add('bg-light');
+                } else {
+                    timeFields[key].classList.remove('bg-light');
+                }
             }
         }
 
         if (hourlyRateInput) {
-            const rateVal = data.hourly_rate;
-            hourlyRateInput.value = (rateVal !== undefined && rateVal !== null && rateVal !== '') ? rateVal : '';
-            hourlyRateInput.disabled = false;
-            hourlyRateInput.classList.remove('bg-light');
-
-            // 同期
-            if (hiddenHourlyRateInput) {
-                hiddenHourlyRateInput.value = hourlyRateInput.value;
+            if (!hourlyRateInput.value && hiddenHourlyRateInput && hiddenHourlyRateInput.value) {
+                hourlyRateInput.value = hiddenHourlyRateInput.value;
+            }
+            hourlyRateInput.disabled = shouldDisable;
+            if (shouldDisable) {
+                hourlyRateInput.classList.add('bg-light');
+            } else {
+                hourlyRateInput.classList.remove('bg-light');
             }
         }
-
         updateTotals();
+
+        if (isAdmin) {
+            document.querySelectorAll('input, select, textarea').forEach(el => {
+                if (el.type === 'hidden') return;
+                if (el.id !== 'yearSelect' && el.id !== 'monthSelect' && el.id !== 'officeSelect') {
+                    el.disabled = true;
+                }
+            });
+        }
     }
 
+    function disableAllInputs() {
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            if (el.type === 'hidden') return;
+            if (el.id !== 'yearSelect' && el.id !== 'monthSelect' && el.id !== 'officeSelect') {
+                el.disabled = true;
+                el.classList.add('bg-light');
+            }
+        });
+        if (submitBtnUpdate) submitBtnUpdate.disabled = true;
+        if (submitBtnFixed) submitBtnFixed.disabled = true;
+        if (btnReject) btnReject.style.display = 'none';
+        renderOfficeToDom(currentOfficeId);
+    }
 
-    // ----------------------------------------------------------------
-    // フォーム送信・リセット
-    // ----------------------------------------------------------------
     function prepareAndSubmitForm(action) {
-        if (!monthSelect.value) {
-            alert('年度と月を選択してください。');
+        if (!monthSelect.value) { alert('年度と月を選択してください。'); return; }
+        backupFormData();
+        captureCurrentOfficeTime(currentOfficeId);
+
+        const targetOfficeInput = document.getElementById('targetOfficeId');
+        if (targetOfficeInput && officeSelect) { targetOfficeInput.value = officeSelect.value; }
+
+        if (hourlyRateInput && hiddenHourlyRateInput) hiddenHourlyRateInput.value = hourlyRateInput.value;
+        if (hiddenTime) hiddenTime.value = JSON.stringify(officeTimeDataLocal);
+
+        if (document.getElementById('forecastMode')) document.getElementById('forecastMode').value = action;
+
+        if (action === 'reject' || action === 'parent_fix' || action === 'parent_unlock') {
+            form.submit();
             return;
         }
 
-        captureCurrentOfficeTime(currentOfficeId);
-
-        // 画面の賃率の値を、隠しフィールドにコピーする
-        if (hourlyRateInput) {
-            const hiddenRate = document.getElementById('hiddenHourlyRate');
-            if (hiddenRate) {
-                hiddenRate.value = hourlyRateInput.value;
-            }
-        }
-
-        if (hiddenTime) {
-            hiddenTime.value = JSON.stringify(officeTimeDataLocal);
-        }
-
-        // 1,000件問題対応
-        const bulkData = {
-            revenues: {},
-            amounts: {}
-        };
+        const bulkData = { revenues: {}, amounts: {} };
         document.querySelectorAll('.revenue-input').forEach(input => {
+            if (input.disabled || input.closest('tr').style.display === 'none') return;
             const id = input.getAttribute('data-revenue-item-id');
             if (id) bulkData.revenues[id] = input.value;
         });
         document.querySelectorAll('.detail-input').forEach(input => {
+            if (input.disabled || input.closest('tr').style.display === 'none') return;
             const id = input.getAttribute('data-detail-id');
             if (id) bulkData.amounts[id] = input.value;
         });
         const bulkInput = document.getElementById('bulkJsonData');
-        if (bulkInput) {
-            bulkInput.value = JSON.stringify(bulkData);
-        }
+        if (bulkInput) bulkInput.value = JSON.stringify(bulkData);
 
-        if (document.getElementById('forecastMode')) {
-            document.getElementById('forecastMode').value = action;
-        }
         form.submit();
     }
 
     function resetInputFields() {
         if (hourlyRateInput) hourlyRateInput.value = '';
-        if (totalHoursInput) totalHoursInput.value = ''; // リセット
-        if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = ''; // リセット
-
-        for (const key in timeFields) {
-            if (timeFields[key]) timeFields[key].value = '';
-        }
+        if (totalHoursInput) totalHoursInput.value = '';
+        if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = '';
+        for (const key in timeFields) { if (timeFields[key]) timeFields[key].value = ''; }
         document.querySelectorAll('.revenue-input').forEach(input => input.value = '');
         document.querySelectorAll('.detail-input').forEach(input => input.value = '');
         officeTimeDataLocal = {};
-
-        // ID: monthlyForecastId
         if (document.getElementById('monthlyForecastId')) document.getElementById('monthlyForecastId').value = '';
-
-        // ステータスリセット (ID: fcStatus)
         if (document.getElementById('fcStatus')) document.getElementById('fcStatus').value = '';
+        if (document.getElementById('updatedAt')) document.getElementById('updatedAt').value = '';
+
+        isAllFixedGlobal = false;
+        unfixedOfficesGlobal = [];
+        if (unfixedCountSpan) unfixedCountSpan.textContent = '0';
+        if (unfixedOfficeListUl) unfixedOfficeListUl.innerHTML = '';
 
         updateTotals();
-        initDirtyCheck();
+        initialFormData = "";
     }
 
-    // イベント: モーダルボタン
-    if (document.getElementById('confirmSubmit')) {
-        document.getElementById('confirmSubmit').addEventListener('click', function () {
-            prepareAndSubmitForm('update');
+    // --- イベントリスナー ---
+    if (document.getElementById('confirmSubmit')) document.getElementById('confirmSubmit').addEventListener('click', function () { prepareAndSubmitForm('update'); });
+    if (document.getElementById('forecastFixConfirmBtn')) document.getElementById('forecastFixConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('fixed'); });
+    if (document.getElementById('forecastRejectConfirmBtn')) document.getElementById('forecastRejectConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('reject'); });
+    if (document.getElementById('forecastParentFixConfirmBtn')) document.getElementById('forecastParentFixConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('parent_fix'); });
+    if (document.getElementById('forecastParentUnlockConfirmBtn')) document.getElementById('forecastParentUnlockConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('parent_unlock'); });
+
+    document.querySelectorAll('.month-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            if (!yearSelect.value) {
+                alert('年度を選択してください。');
+                return;
+            }
+            const selectedMonth = this.getAttribute('data-month');
+            let optionExists = false;
+            for (let i = 0; i < monthSelect.options.length; i++) {
+                if (monthSelect.options[i].value == selectedMonth) {
+                    optionExists = true;
+                    break;
+                }
+            }
+            if (!optionExists) {
+                const opt = document.createElement('option');
+                opt.value = selectedMonth;
+                opt.text = selectedMonth + '月';
+                monthSelect.add(opt);
+            }
+            monthSelect.value = selectedMonth;
+            monthSelect.dispatchEvent(new Event('change'));
         });
-    }
-    // ID: forecastFixConfirmBtn
-    if (document.getElementById('forecastFixConfirmBtn')) {
-        document.getElementById('forecastFixConfirmBtn').addEventListener('click', function () {
-            prepareAndSubmitForm('fixed');
-        });
-    }
+    });
 
-
-    // ----------------------------------------------------------------
-    // 営業所切り替えイベント
-    // ----------------------------------------------------------------
     if (officeSelect) {
         officeSelect.addEventListener('change', () => {
+            if (!monthSelect.value) {
+                alert("月を選択してください。");
+                officeSelect.value = currentOfficeId || 'all';
+                return;
+            }
+
+            if (!isAdmin) {
+                if (initialFormData !== "") {
+                    const currentFormData = getFormDataString();
+                    const isChanged = (initialFormData !== currentFormData);
+                    if (isChanged) {
+                        if (!confirm("入力内容が保存されていません。\n移動しますか？")) {
+                            officeSelect.value = currentOfficeId;
+                            return;
+                        }
+                    }
+                }
+            }
+
             const currentRate = hourlyRateInput ? hourlyRateInput.value : '';
             captureCurrentOfficeTime(currentOfficeId);
             currentOfficeId = officeSelect.value;
             renderOfficeToDom(currentOfficeId);
+
             if (currentOfficeId !== 'all' && currentRate !== '' && hourlyRateInput) {
                 hourlyRateInput.value = currentRate;
-                // 同期
                 if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = currentRate;
-
-                if (!officeTimeDataLocal[currentOfficeId]) {
-                    officeTimeDataLocal[currentOfficeId] = {};
-                }
+                if (!officeTimeDataLocal[currentOfficeId]) officeTimeDataLocal[currentOfficeId] = {};
                 officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
             }
+
+            const errorAlert = getOrCreateErrorAlert();
+            if (errorAlert) errorAlert.innerHTML = '';
+
+            const myOfficeData = officeTimeDataLocal[currentOfficeId];
+            const hasParentData = document.getElementById('monthlyForecastId') && document.getElementById('monthlyForecastId').value;
+
+            if (!isAdmin && currentOfficeId !== 'all' && hasParentData && !myOfficeData) {
+                if (errorAlert) {
+                    errorAlert.innerHTML = `
+                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>
+                                <strong>データ未登録</strong><br>
+                                この営業所のデータはまだ登録されていません。
+                            </div>
+                        </div>`;
+                }
+                disableAllInputs();
+            } else {
+                renderOfficeToDom(currentOfficeId);
+            }
+
             filterDetailsByOffice();
             updateButtonState();
+            initialFormData = getFormDataString();
         });
     }
 
-    // ----------------------------------------------------------------
-    // 合計計算 (表示中のものだけ計算)
-    // ----------------------------------------------------------------
+    if (yearSelect) {
+        yearSelect.addEventListener('change', function () {
+        });
+    }
+
     function updateTotals() {
         let totalHours = 0;
         let totalLaborCost = 0;
@@ -450,39 +617,24 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (currentOfficeId === 'all') {
-            // 全社モード: 全データの合計
             for (const officeId in officeTimeDataLocal) {
                 const data = officeTimeDataLocal[officeId];
                 if (data) {
-                    const standard = parseFloat(data.standard_hours) || 0;
-                    const overtime = parseFloat(data.overtime_hours) || 0;
-                    const transferred = parseFloat(data.transferred_hours) || 0;
-                    totalHours += (standard + overtime + transferred);
+                    totalHours += (parseFloat(data.standard_hours) || 0) + (parseFloat(data.overtime_hours) || 0) + (parseFloat(data.transferred_hours) || 0);
                 }
             }
         } else {
-            // 個別モード: 現在の入力値 or データから計算
             if (currentOfficeId) {
                 captureCurrentOfficeTime(currentOfficeId);
                 const data = officeTimeDataLocal[currentOfficeId];
                 if (data) {
-                    const standard = parseFloat(data.standard_hours) || 0;
-                    const overtime = parseFloat(data.overtime_hours) || 0;
-                    const transferred = parseFloat(data.transferred_hours) || 0;
-                    totalHours += (standard + overtime + transferred);
+                    totalHours += (parseFloat(data.standard_hours) || 0) + (parseFloat(data.overtime_hours) || 0) + (parseFloat(data.transferred_hours) || 0);
                 }
             }
         }
-
-        // 総時間の反映 (小数点2桁まで)
-        if (totalHoursInput) {
-            totalHoursInput.value = totalHours.toFixed(2);
-        }
-
+        if (totalHoursInput) totalHoursInput.value = totalHours.toFixed(2);
         totalLaborCost = Math.round(totalHours * hourlyRate);
-        if (document.getElementById('info-labor-cost')) {
-            document.getElementById('info-labor-cost').textContent = totalLaborCost.toLocaleString();
-        }
+        if (document.getElementById('info-labor-cost')) document.getElementById('info-labor-cost').textContent = totalLaborCost.toLocaleString();
 
         let expenseTotal = 0;
         const accountTotals = {};
@@ -490,12 +642,17 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = input.closest('tr');
             if (row && row.style.display === 'none') return;
 
+            const rowOfficeId = row.getAttribute('data-office-id');
+            if (currentOfficeId && currentOfficeId !== 'all') {
+                if (rowOfficeId !== 'common' && rowOfficeId !== currentOfficeId) {
+                    return;
+                }
+            }
+
             const val = parseFloat(input.value) || 0;
             const accountId = input.dataset.accountId;
             expenseTotal += val;
-            if (!accountTotals[accountId]) {
-                accountTotals[accountId] = 0;
-            }
+            if (!accountTotals[accountId]) accountTotals[accountId] = 0;
             accountTotals[accountId] += val;
         });
 
@@ -516,39 +673,36 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = input.closest('tr');
             if (row && row.style.display === 'none') return;
 
+            const rowOfficeId = row.getAttribute('data-office-id');
+            if (currentOfficeId && currentOfficeId !== 'all') {
+                if (rowOfficeId !== 'common' && rowOfficeId !== currentOfficeId) {
+                    return;
+                }
+            }
+
             const val = parseFloat(input.value) || 0;
             const categoryId = input.dataset.categoryId;
             revenueTotal += val;
-            if (!revenueCategoryTotals[categoryId]) {
-                revenueCategoryTotals[categoryId] = 0;
-            }
+            if (!revenueCategoryTotals[categoryId]) revenueCategoryTotals[categoryId] = 0;
             revenueCategoryTotals[categoryId] += val;
         });
 
         if (document.getElementById('total-revenue')) document.getElementById('total-revenue').textContent = revenueTotal.toLocaleString();
         if (document.getElementById('info-revenue-total')) document.getElementById('info-revenue-total').textContent = revenueTotal.toLocaleString();
-        for (const [categoryId, sum] of Object.entries(revenueCategoryTotals)) {
-            const target = document.getElementById(`total-revenue-category-${categoryId}`);
-            if (target) target.textContent = sum.toLocaleString();
-        }
-
+        document.querySelectorAll('[id^="total-revenue-category-"]').forEach(target => {
+            const idStr = target.id.replace('total-revenue-category-', '');
+            // revenueCategoryTotals に値があればそれを、なければ 0 をセット
+            const sum = revenueCategoryTotals[idStr] || 0;
+            target.textContent = sum.toLocaleString();
+        });
         const grossProfit = revenueTotal - expenseTotal;
-        if (document.getElementById('info-gross-profit')) {
-            document.getElementById('info-gross-profit').textContent = grossProfit.toLocaleString();
-        }
+        if (document.getElementById('info-gross-profit')) document.getElementById('info-gross-profit').textContent = grossProfit.toLocaleString();
     }
 
-    // ----------------------------------------------------------------
-    // 入力イベント (合計更新 & DirtyCheck)
-    // ----------------------------------------------------------------
     document.getElementById('mainForm').addEventListener('input', function (e) {
         if (e.target.matches('.detail-input, .revenue-input, #standardHours, #overtimeHours, #transferredHours, #hourlyRate, #fulltimeCount, #contractCount, #dispatchCount')) {
             if (e.target === hourlyRateInput) {
-                // 入力時に隠しフィールドへ同期
-                if (hiddenHourlyRateInput) {
-                    hiddenHourlyRateInput.value = hourlyRateInput.value;
-                }
-
+                if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = hourlyRateInput.value;
                 const v = hourlyRateInput.value;
                 const rate = (v === '' ? '' : parseFloat(v));
                 for (const oid in officeTimeDataLocal) {
@@ -562,12 +716,8 @@ document.addEventListener('DOMContentLoaded', function () {
         updateButtonState();
     });
 
-
-    // ----------------------------------------------------------------
-    // データロード (月選択時)
-    // ----------------------------------------------------------------
     if (monthSelect) {
-        monthSelect.addEventListener('change', function () {
+        monthSelect.addEventListener('change', function (e) {
             const year = yearSelect.value;
             const month = monthSelect.value;
             if (!year || !month) return;
@@ -575,20 +725,101 @@ document.addEventListener('DOMContentLoaded', function () {
             resetInputFields();
             currentOfficeId = officeSelect ? officeSelect.value : null;
 
+            // 変数名を requestParams に変更して、外側のスコープ変数との衝突を回避
+            const requestParams = new URLSearchParams(window.location.search);
+
+            if (e.isTrusted) {
+                const errorAlert = document.getElementById('errorAlert');
+                if (errorAlert) {
+                    errorAlert.innerHTML = '';
+                    errorAlert.className = '';
+                }
+            }
+
             fetch(`forecast_edit_load.php?year=${year}&month=${month}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) throw new Error(data.error);
 
-                    officeTimeDataLocal = data.offices || {};
-                    // ID: monthlyForecastId
-                    if (document.getElementById('monthlyForecastId')) {
-                        document.getElementById('monthlyForecastId').value = data.monthly_forecast_id ?? '';
+                    const errorAlert = getOrCreateErrorAlert();
+                    if (errorAlert) {
+                        if (e.isTrusted || !requestParams.has('error')) {
+                            errorAlert.innerHTML = '';
+                            errorAlert.className = '';
+                        }
                     }
 
-                    // ID: fcStatus
-                    if (document.getElementById('fcStatus')) {
-                        document.getElementById('fcStatus').value = data.status ?? '';
+                    // 1. 親データが存在しない場合
+                    if (!data.monthly_forecast_id) {
+                        if (errorAlert) {
+                            errorAlert.innerHTML = `
+                                <div class="alert alert-secondary d-flex align-items-center" role="alert">
+                                    <i class="bi bi-info-circle-fill me-2"></i>
+                                    <div><strong>この月はまだ登録されていません。</strong></div>
+                                </div>`;
+                        }
+                        disableAllInputs();
+                        return;
+                    }
+
+                    officeTimeDataLocal = data.offices || {};
+
+                    if (document.getElementById('monthlyForecastId')) document.getElementById('monthlyForecastId').value = data.monthly_forecast_id ?? '';
+                    if (document.getElementById('fcStatus')) document.getElementById('fcStatus').value = data.status ?? '';
+
+                    isAllFixedGlobal = !!data.all_fixed;
+                    unfixedOfficesGlobal = data.unfixed_offices || [];
+
+                    if (unfixedOfficeListUl) {
+                        unfixedOfficeListUl.innerHTML = '';
+                        if (unfixedOfficesGlobal.length > 0) {
+                            unfixedOfficesGlobal.forEach(name => {
+                                const li = document.createElement('li');
+                                li.className = 'list-group-item';
+                                li.textContent = name;
+                                unfixedOfficeListUl.appendChild(li);
+                            });
+                        } else {
+                            unfixedOfficeListUl.innerHTML = '<li class="list-group-item text-muted">なし（全営業所確定済）</li>';
+                        }
+                    }
+                    if (unfixedCountSpan) unfixedCountSpan.textContent = unfixedOfficesGlobal.length;
+
+                    const updatedAtInput = document.getElementById('updatedAt');
+                    if (updatedAtInput) updatedAtInput.value = data.updated_at || '';
+                    else {
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden'; hidden.id = 'updatedAt'; hidden.name = 'updated_at';
+                        hidden.value = data.updated_at || '';
+                        form.appendChild(hidden);
+                    }
+
+                    const loadedRate = data.common_hourly_rate || '';
+                    if (hourlyRateInput) {
+                        hourlyRateInput.value = (loadedRate !== 0 && loadedRate !== '') ? loadedRate : '';
+                        if (hiddenHourlyRateInput) hiddenHourlyRateInput.value = hourlyRateInput.value;
+                    }
+
+                    for (const oid in officeTimeDataLocal) {
+                        officeTimeDataLocal[oid].hourly_rate = loadedRate ? parseFloat(loadedRate) : '';
+                    }
+
+                    const myOfficeData = officeTimeDataLocal[currentOfficeId];
+                    // Adminでもデータが無い場合は警告表示 (disableはしない)
+                    if (!isAdmin && currentOfficeId !== 'all' && !myOfficeData) {
+                        if (errorAlert) {
+                            errorAlert.innerHTML = `
+                                <div class="alert alert-warning d-flex align-items-center" role="alert">
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                    <div>
+                                        <strong>データ未登録</strong><br>
+                                        この営業所のデータはまだ登録されていません。
+                                    </div>
+                                </div>`;
+                        }
+                        disableAllInputs();
+                        renderOfficeToDom(currentOfficeId);
+                        return;
                     }
 
                     renderOfficeToDom(currentOfficeId);
@@ -605,9 +836,11 @@ document.addEventListener('DOMContentLoaded', function () {
                             if (input) input.value = (amount != 0) ? amount : '';
                         }
                     }
-
                     initDirtyCheck();
                     filterDetailsByOffice();
+
+                    if (requestParams.has('error') && !isAdmin) restoreFormData();
+                    else if (requestParams.has('success')) clearBackup();
                 })
                 .catch(error => {
                     console.error('データ読み込みエラー:', error);
@@ -617,17 +850,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // アコーディオン制御 (Collapse)
+    // --- アコーディオン アイコン制御 ---
     const l1Toggles = [
         { btn: document.querySelector('[data-bs-target=".l1-revenue-group"]'), targetClass: '.l1-revenue-group' },
         { btn: document.querySelector('[data-bs-target=".l1-expense-group"]'), targetClass: '.l1-expense-group' }
     ];
-
     l1Toggles.forEach(l1 => {
         if (!l1.btn) return;
         const iconElementL1 = l1.btn.querySelector('i');
         const l2Rows = document.querySelectorAll(l1.targetClass);
-
         l2Rows.forEach(l2Row => {
             l2Row.addEventListener('show.bs.collapse', () => {
                 if (iconElementL1) { iconElementL1.classList.remove('bi-plus-lg'); iconElementL1.classList.add('bi-dash-lg'); }
@@ -639,7 +870,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         iconElementL1.classList.remove('bi-dash-lg'); iconElementL1.classList.add('bi-plus-lg');
                     }
                 }, 350);
-
                 const l2Button = l2Row.querySelector('.toggle-icon');
                 if (l2Button) {
                     const l3TargetSelector = l2Button.getAttribute('data-bs-target');
@@ -662,7 +892,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const l3TargetSelector = l2Button.getAttribute('data-bs-target');
         if (!l3TargetSelector) return;
         const l3Rows = document.querySelectorAll(l3TargetSelector);
-
         l3Rows.forEach(l3Row => {
             l3Row.addEventListener('show.bs.collapse', () => {
                 if (iconElementL2) { iconElementL2.classList.remove('bi-plus'); iconElementL2.classList.add('bi-dash'); }
@@ -678,12 +907,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // ----------------------------------------------------------------
-    // 初期表示
-    // ----------------------------------------------------------------
     const urlParams = new URLSearchParams(window.location.search);
     const initialMonth = urlParams.get('month');
-
     if (urlParams.get('year') && initialMonth && yearSelect && monthSelect) {
         yearSelect.value = urlParams.get('year');
         if (yearSelect.dispatchEvent) yearSelect.dispatchEvent(new Event('change'));
@@ -703,6 +928,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const url = new URL(window.location.href);
                 url.searchParams.delete('success'); url.searchParams.delete('error');
                 url.searchParams.delete('year'); url.searchParams.delete('month');
+                url.searchParams.delete('msg');
                 window.history.replaceState({}, document.title, url.pathname);
             }
         });
