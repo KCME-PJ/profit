@@ -1,11 +1,14 @@
 document.addEventListener('DOMContentLoaded', function () {
     const yearSelect = document.getElementById('yearSelect');
     const monthSelect = document.getElementById('monthSelect');
+    const officeSelect = document.getElementById('officeSelect');
     const monthButtonsContainer = document.getElementById('monthButtonsContainer');
 
     // PHPから渡された登録済みデータ
-    // yearMonthData は result_edit.php で window.yearMonthData として設定されている
     const yearMonthData = window.yearMonthData;
+
+    // 現在の年度のステータス一覧を保持する変数
+    let currentYearStatuses = {};
 
     /**
      * 年度選択に応じて月セレクトボックスを更新する
@@ -34,47 +37,35 @@ document.addEventListener('DOMContentLoaded', function () {
      * @param {string} year 選択された年度
      */
     function updateResultStatusButtons(year) {
-        // 全ボタンを初期化
-        document.querySelectorAll('#monthButtonsContainer button').forEach(button => {
-            button.classList.remove('btn-primary', 'btn-success');
-            button.classList.add('btn-secondary');
-            button.disabled = true;
-            // 既存のイベントリスナーを削除 (二重登録防止)
-            button.replaceWith(button.cloneNode(true));
-        });
-
         if (!year) return;
 
-        // 新しいボタンに再度参照し直す
+        // 現在選択中の営業所IDを取得
+        const currentOfficeId = officeSelect ? officeSelect.value : '';
+
+        // ボタンの参照を取得
         const monthButtons = document.querySelectorAll('#monthButtonsContainer button');
 
-        // ステータス取得 (API参照を result バージョンに修正)
-        fetch(`get_result_status.php?year=${year}`)
+        fetch(`get_result_status.php?year=${year}&office_id=${currentOfficeId}`)
             .then(response => response.json())
             .then(statuses => {
-                // PHP側で返される statuses: {1: 'draft', 2: 'fixed', ...}
+                currentYearStatuses = statuses;
+
                 monthButtons.forEach(button => {
-                    const month = parseInt(button.textContent.replace('月', ''), 10);
+                    const monthText = button.textContent.trim();
+                    const month = parseInt(monthText.replace('月', ''), 10);
                     if (isNaN(month)) return;
 
                     const status = statuses[month] || 'none';
                     button.disabled = false;
-                    button.className = 'btn btn-sm me-1 mb-1'; // クラス初期化
+                    button.className = 'btn btn-sm me-1 mb-1 month-btn'; // クラス初期化
 
                     if (status === 'fixed') {
-                        button.classList.add('btn-success');
+                        button.classList.add('btn-success');   // 確定済: 緑
                     } else if (status === 'draft' || status === 'registered') {
-                        button.classList.add('btn-primary');
+                        button.classList.add('btn-primary');   // 登録済: 青
                     } else {
-                        button.classList.add('btn-secondary');
+                        button.classList.add('btn-secondary'); // 未登録: グレー
                     }
-
-                    // 月ボタンクリック時のイベント再設定
-                    button.addEventListener('click', function () {
-                        // 月ドロップダウンの値を更新し、changeイベントを発火させる
-                        monthSelect.value = month;
-                        monthSelect.dispatchEvent(new Event('change'));
-                    });
                 });
             })
             .catch(error => console.error('ステータス取得エラー:', error));
@@ -84,45 +75,74 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- イベントリスナー ---
     // ---------------------------------------------
 
-    // 年度選択時の処理
-    yearSelect.addEventListener('change', function () {
-        const selectedYear = yearSelect.value;
-        if (!selectedYear) return;
+    // 1. 年度変更時
+    if (yearSelect) {
+        yearSelect.addEventListener('change', function () {
+            const selectedYear = this.value;
+            updateMonths();
+            updateResultStatusButtons(selectedYear);
 
-        updateMonths();
-        // 関数名を updateResultStatusButtons に修正
-        updateResultStatusButtons(selectedYear);
+            if (window.history.replaceState) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('year', selectedYear);
+                url.searchParams.delete('month');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        });
+    }
 
-        // URLパラメータを更新 (リロード時に year パラメータを維持するため)
-        if (window.history.replaceState) {
-            const url = new URL(window.location.href);
-            url.searchParams.set('year', selectedYear);
-            url.searchParams.delete('month'); // 月は一旦リセット
-            window.history.replaceState({}, document.title, url.pathname + url.search);
-        }
-    });
+    // 2. 営業所変更時にもボタン色を更新する
+    if (officeSelect) {
+        officeSelect.addEventListener('change', function () {
+            const selectedYear = yearSelect.value;
+            if (selectedYear) {
+                updateResultStatusButtons(selectedYear);
+            }
+        });
+    }
 
-    // ---------------------------------------------
+    // 3. 月ボタンクリック時の処理 (イベント委譲)
+    if (monthButtonsContainer) {
+        monthButtonsContainer.addEventListener('click', function (e) {
+            if (e.target.tagName === 'BUTTON') {
+                const btn = e.target;
+                const monthText = btn.textContent.trim();
+                const month = parseInt(monthText.replace('月', ''), 10);
+
+                if (!isNaN(month) && monthSelect) {
+                    let optionExists = false;
+                    for (let i = 0; i < monthSelect.options.length; i++) {
+                        if (parseInt(monthSelect.options[i].value) === month) {
+                            optionExists = true;
+                            monthSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    if (!optionExists) {
+                        const opt = document.createElement('option');
+                        opt.value = month;
+                        opt.text = month + '月';
+                        monthSelect.add(opt);
+                        monthSelect.value = month;
+                    }
+                    monthSelect.dispatchEvent(new Event('change'));
+                }
+            }
+        });
+    }
+
     // --- 初期ロード処理 ---
-    // ---------------------------------------------
-
-    // URLパラメータから year, month を取得
     const urlParams = new URLSearchParams(window.location.search);
-    const initialYear = urlParams.get('year');
-    const initialMonth = urlParams.get('month');
+    const initialYear = urlParams.get('year') || (yearSelect ? yearSelect.value : null);
 
     if (initialYear) {
-        // 1. 年度ドロップダウンの値をセット
-        yearSelect.value = initialYear;
-        // 2. 月ドロップダウンのオプションとボタンのステータスを更新
+        if (yearSelect) yearSelect.value = initialYear;
         updateMonths();
-        // 関数名を updateResultStatusButtons に修正
-        updateResultStatusButtons(initialYear);
-
-        if (initialMonth) {
-            // 3. 月ドロップダウンの値をセット (データロードは body.js の役割)
+        const initialMonth = urlParams.get('month');
+        if (initialMonth && monthSelect) {
             monthSelect.value = initialMonth;
         }
+        updateResultStatusButtons(initialYear);
     }
 
     // エクセル集計ボタンの処理
@@ -140,6 +160,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
+            const status = currentYearStatuses[month] || 'none';
+
+            if (status === 'none') {
+                alert('この月のデータは未登録のため出力できません。');
+                return;
+            }
+
             const type = button.getAttribute('data-export-type');
             let url = '';
 
@@ -148,7 +175,14 @@ document.addEventListener('DOMContentLoaded', function () {
             } else if (type === 'details') {
                 url = `result_export_excel_details.php?year=${year}&month=${month}`;
             }
-            window.location.href = url;
+
+            if (status === 'draft' || status === 'registered') {
+                if (confirm('このデータは未確定 (Draft) です。\n未確定のデータを出力しますか？')) {
+                    window.location.href = url;
+                }
+            } else if (status === 'fixed') {
+                window.location.href = url;
+            }
         });
     });
 });
