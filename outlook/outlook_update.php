@@ -1,67 +1,108 @@
 <?php
 require_once '../includes/database.php';
 require_once '../includes/outlook_functions.php';
+require_once '../includes/logger.php';
+
+// セッション開始（権限チェック用）
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+$userRole = $_SESSION['role'] ?? 'viewer';
+$isAdmin = ($userRole === 'admin');
 
 $actionType = $_POST['action_type'] ?? 'update';
 $year = (int)($_POST['year'] ?? 0);
 $month = (int)($_POST['month'] ?? 0);
-$officeTimeData = $_POST['officeTimeData'] ?? [];
-if (!is_array($officeTimeData)) {
-    // JSON文字列の場合にデコードを試みる
-    $officeTimeData = json_decode($officeTimeData, true) ?? [];
-}
-
-// ----------------------------------------------------------------
-// bulk_json_data (一括送信データ) の受け取り処理
-// ----------------------------------------------------------------
-$detailAmounts = $_POST['amounts'] ?? [];
-$revenueAmounts = $_POST['revenues'] ?? [];
-
-if (!empty($_POST['bulk_json_data'])) {
-    $bulkData = json_decode($_POST['bulk_json_data'], true);
-    if (is_array($bulkData)) {
-        // 収入データ
-        if (isset($bulkData['revenues']) && is_array($bulkData['revenues'])) {
-            $revenueAmounts = $bulkData['revenues'];
-        }
-        // 経費データ
-        if (isset($bulkData['amounts']) && is_array($bulkData['amounts'])) {
-            $detailAmounts = $bulkData['amounts'];
-        }
-    }
-}
-// ----------------------------------------------------------------
-
-// ★共通仕様: hidden_hourly_rate から値を受け取る
-$hourly_rate_input = $_POST['hidden_hourly_rate'] ?? '';
-
-// 空文字なら null、値があれば float に変換
-$hourly_rate = ($hourly_rate_input !== '') ? (float)$hourly_rate_input : null;
-$outlookId = $_POST['outlook_id'] ?? null;
+$monthlyOutlookId = $_POST['monthly_outlook_id'] ?? null;
+$updatedAt = $_POST['updated_at'] ?? null;
 
 $dbh = getDb();
 $dbh->beginTransaction();
 
 try {
-    // DB関数に渡す $data 配列
+    // --------------------------------------------------------
+    // A. 管理者アクション (月次確定 / ロック解除 / 差し戻し)
+    // --------------------------------------------------------
+    if ($actionType === 'parent_fix' || $actionType === 'parent_unlock' || $actionType === 'reject') {
+        if (!$isAdmin) {
+            throw new Exception("権限がありません。");
+        }
+        if (!$monthlyOutlookId) {
+            throw new Exception("対象データが見つかりません。");
+        }
+
+        if ($actionType === 'parent_fix') {
+            // 親ステータスを fixed にし、Result(概算実績)へ反映
+            fixParentOutlook((int)$monthlyOutlookId, $dbh);
+            $msg = "{$year}年{$month}月を確定(Fixed)し、概算実績(Result)へ反映しました。";
+        } elseif ($actionType === 'parent_unlock') {
+            // 親ステータスを draft に (ロック解除)
+            unlockParentOutlook((int)$monthlyOutlookId, $dbh);
+            $msg = "{$year}年{$month}月のロックを解除しました。";
+        } elseif ($actionType === 'reject') {
+            // 指定した営業所のデータを差し戻し
+            $targetOfficeId = $_POST['target_office_id'] ?? null;
+            if (!$targetOfficeId) {
+                throw new Exception("差し戻し対象の営業所が指定されていません。");
+            }
+            rejectMonthlyOutlook((int)$monthlyOutlookId, (int)$targetOfficeId, $dbh);
+            $msg = "指定した営業所のデータを差し戻しました。";
+        }
+
+        $dbh->commit();
+        header("Location: outlook_edit.php?year={$year}&month={$month}&success=1&msg=" . urlencode($msg));
+        exit;
+    }
+
+    // --------------------------------------------------------
+    // B. 通常の更新 / 確定 (Manager/Admin)
+    // --------------------------------------------------------
+
+    // データ準備
+    $officeTimeData = $_POST['officeTimeData'] ?? [];
+    if (!is_array($officeTimeData)) {
+        $officeTimeData = json_decode($officeTimeData, true) ?? [];
+    }
+
+    $detailAmounts = $_POST['amounts'] ?? [];
+    $revenueAmounts = $_POST['revenues'] ?? [];
+
+    if (!empty($_POST['bulk_json_data'])) {
+        $bulkData = json_decode($_POST['bulk_json_data'], true);
+        if (is_array($bulkData)) {
+            if (isset($bulkData['revenues']) && is_array($bulkData['revenues'])) {
+                $revenueAmounts = $bulkData['revenues'];
+            }
+            if (isset($bulkData['amounts']) && is_array($bulkData['amounts'])) {
+                $detailAmounts = $bulkData['amounts'];
+            }
+        }
+    }
+
+    // 共通賃率
+    $hourly_rate_input = $_POST['hidden_hourly_rate'] ?? '';
+    $hourly_rate = ($hourly_rate_input !== '') ? (float)$hourly_rate_input : null;
+
     $data = [
-        'outlook_id' => $outlookId,
+        'monthly_outlook_id' => $monthlyOutlookId,
         'year' => $year,
         'month' => $month,
-        'hourly_rate' => $hourly_rate, // 共通賃率
-        'officeTimeData' => $officeTimeData, // 時間・人数
-        'amounts' => $detailAmounts,    // 経費
-        'revenues' => $revenueAmounts    // 収入
+        'hourly_rate' => $hourly_rate,
+        'officeTimeData' => $officeTimeData,
+        'amounts' => $detailAmounts,
+        'revenues' => $revenueAmounts,
+        'updated_at' => $updatedAt,
+        'target_office_id' => $_POST['target_office_id'] ?? null
     ];
 
     if ($actionType === 'fixed') {
-        // 確定処理: update後にResultへ反映
+        // 通常更新 (保存) + 確定 + ログ記録
         confirmMonthlyOutlook($data, $dbh);
-        $message = "月末見込みの確定・概算実績への反映が完了しました。";
+        $message = "データを確定しました。";
     } else {
-        // 修正処理: updateのみ
+        // 通常修正 (update) + ログ記録
         updateMonthlyOutlook($data, $dbh);
-        $message = "月末見込みの更新が完了しました。";
+        $message = "データを更新しました。";
     }
 
     $dbh->commit();
@@ -71,7 +112,9 @@ try {
     header("Location: {$redirectUrl}");
     exit;
 } catch (Exception $e) {
-    $dbh->rollBack();
+    if ($dbh->inTransaction()) {
+        $dbh->rollBack();
+    }
     // エラーリダイレクト
     $redirectUrl = "outlook_edit.php?error=" . urlencode("登録エラー: " . $e->getMessage()) . "&year={$year}&month={$month}";
     header("Location: {$redirectUrl}");
