@@ -68,20 +68,51 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
                 plugins: {
                     tooltip: {
+
+                        // 折れ線グラフ（比較対象）を詳細リストから隠す
+                        filter: function (tooltipItem) {
+                            return tooltipItem.dataset.type !== 'line';
+                        },
                         callbacks: {
                             label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString()} 円`,
 
-                            // ★追加: ツールチップの最下部に合計を表示する
+
+
+                            // フッターで「合計」と「比較対象」を並べて表示する
                             footer: (tooltipItems) => {
-                                let total = 0;
+                                let stackTotal = 0;
                                 const index = tooltipItems[0].dataIndex;
                                 const chart = tooltipItems[0].chart;
+
+                                // 積み上げ合計の計算
                                 chart.data.datasets.forEach((dataset, i) => {
                                     if (dataset.type === 'bar' && chart.isDatasetVisible(i)) {
-                                        total += (dataset.data[index] || 0);
+                                        stackTotal += (dataset.data[index] || 0);
                                     }
                                 });
-                                return '合計: ' + total.toLocaleString() + ' 円';
+
+                                let footerText = '合計: ' + stackTotal.toLocaleString() + ' 円';
+
+                                // 比較対象（折れ線）のデータを取得して表示
+                                chart.data.datasets.forEach((dataset) => {
+                                    if (dataset.type === 'line') {
+                                        const val = dataset.data[index] || 0;
+
+                                        // ラベルを「比較対象 (XX)」に変換する処理
+                                        let displayLabel = '比較対象';
+                                        // "収入合計 (CP)" から "(CP)" を抽出
+                                        const match = dataset.label.match(/\(.+\)/);
+                                        if (match) {
+                                            displayLabel += ' ' + match[0]; // -> "比較対象 (CP)"
+                                        } else {
+                                            displayLabel += ' (' + dataset.label + ')';
+                                        }
+
+                                        footerText += `\n${displayLabel}: ${val.toLocaleString()} 円`;
+                                    }
+                                });
+
+                                return footerText;
                             }
                         }
                     }
@@ -182,6 +213,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // --- 描画ロジック ---
+    // 共通の変換マップ（ラベル定義）
+    const labelMap = {
+        'cp': 'CP',
+        'forecast': '見通し',
+        'plan': '予定',
+        'outlook': '月末見込み',
+        'result': '概算実績',
+        'previous_year_result': '前年実績'
+    };
 
     // 1. 左上: 収益
     function renderMainChart() {
@@ -192,18 +232,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const title = isPretax ? '税引前利益' : '差引収益';
         const baseD = isPretax ? d.baseDataPreTax : d.baseDataGross;
         const compD = isPretax ? d.compareDataPreTax : d.compareDataGross;
+        // ラベル変換
+        const baseLabelJP = labelMap[d.baseLabel] || d.baseLabel; // ラベルマップになければそのまま
 
         document.getElementById('main-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
 
         mainChart.data.labels = d.labels;
         mainChart.data.datasets = [{
-            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            type: 'bar', label: `${title} (${baseLabelJP})`, data: baseD,
             backgroundColor: 'rgba(13, 110, 253, 0.7)', borderColor: 'rgba(13, 110, 253, 1)', borderWidth: 1, order: 2
         }];
         if (currentFilters.compareName !== 'なし' && compD) {
             mainChart.data.datasets.push({
-                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
-                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
+                type: 'line', label: `${title} (${currentFilters.compareName})`, data: compD,
+                borderColor: '#212529',
+                borderWidth: 2,
+                borderDash: [5, 5], // 破線にする設定
+                backgroundColor: 'rgba(0, 0, 0, 0)', // 背景色なし
+                fill: false,
+                tension: 0.1,
+                order: 1
             });
         }
         mainChart.update();
@@ -219,18 +267,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const baseD = isLabor ? d.baseLaborData : d.baseExpenseData;
         const compD = isLabor ? d.compareLaborData : d.compareExpenseData;
         const color = isLabor ? '255, 193, 7' : '108, 117, 125';
+        // ラベル変換
+        const baseLabelJP = labelMap[d.baseLabel] || d.baseLabel; // ラベルマップになければそのまま
 
         document.getElementById('expense-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
 
         expenseChart.data.labels = d.labels;
         expenseChart.data.datasets = [{
-            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            type: 'bar', label: `${title} (${baseLabelJP})`, data: baseD,
             backgroundColor: `rgba(${color}, 0.7)`, borderColor: `rgba(${color}, 1)`, borderWidth: 1, order: 2
         }];
         if (currentFilters.compareName !== 'なし' && compD) {
             expenseChart.data.datasets.push({
-                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
-                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
+                type: 'line', label: `${title} (${currentFilters.compareName})`, data: compD,
+                borderColor: '#212529',
+                borderWidth: 2,
+                borderDash: [5, 5], // 破線にする設定
+                backgroundColor: 'rgba(0, 0, 0, 0)', // 背景色なし
+                fill: false,
+                tension: 0.1,
+                order: 1
             });
         }
         expenseChart.update();
@@ -258,7 +314,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentFilters.compareName !== 'なし' && d.compareTotalData) {
             datasets.push({
                 type: 'line',
-                label: `収入合計 (${d.compareLabel})`,
+                label: `収入合計 (${currentFilters.compareName})`,
                 data: d.compareTotalData,
                 borderColor: '#212529',
                 borderWidth: 2,
@@ -283,22 +339,30 @@ document.addEventListener('DOMContentLoaded', function () {
         const baseD = isHourly ? d.baseHourlyData : d.baseHoursData;
         const compD = isHourly ? d.compareHourlyData : d.compareHoursData;
         const unit = isHourly ? ' 円' : ' 時間';
+        // ラベル変換
+        const baseLabelJP = labelMap[d.baseLabel] || d.baseLabel; // ラベルマップになければそのまま
 
         document.getElementById('productivity-chart-title').textContent = `${title} 推移 (${currentFilters.officeName})`;
 
         productivityChart.data.labels = d.labels;
         productivityChart.data.datasets = [{
-            type: 'bar', label: `${title} (${d.baseLabel})`, data: baseD,
+            type: 'bar', label: `${title} (${baseLabelJP})`, data: baseD,
             backgroundColor: 'rgba(25, 135, 84, 0.7)', borderColor: 'rgba(25, 135, 84, 1)', borderWidth: 1, order: 2
         }];
         if (currentFilters.compareName !== 'なし' && compD) {
             productivityChart.data.datasets.push({
-                type: 'line', label: `${title} (${d.compareLabel})`, data: compD,
-                borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.1)', fill: false, tension: 0.1, order: 1
+                type: 'line', label: `${title} (${currentFilters.compareName})`, data: compD,
+                borderColor: '#212529',
+                borderWidth: 2,
+                borderDash: [5, 5], // 破線にする設定
+                backgroundColor: 'rgba(0, 0, 0, 0)', // 背景色なし
+                fill: false,
+                tension: 0.1,
+                order: 1
             });
         }
 
-        // ★修正: 総時間の時はツールチップでも小数点第2位まで強制表示
+        // 総時間の時はツールチップでも小数点第2位まで強制表示
         productivityChart.options.plugins.tooltip.callbacks.label = (c) => {
             const formatOpts = isHourly ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
             return `${c.dataset.label}: ${c.parsed.y.toLocaleString(undefined, formatOpts)}${unit}`;
