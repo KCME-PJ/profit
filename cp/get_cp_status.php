@@ -1,19 +1,70 @@
 <?php
+// セッション管理・認証
+require_once '../includes/auth_check.php';
 require_once '../includes/database.php';
-require_once '../includes/cp_ui_functions.php';
 
-$year = (int)($_GET['year'] ?? 0);
+// エラー出力を抑制し、JSONのみを返す
+error_reporting(0);
+header('Content-Type: application/json; charset=utf-8');
 
-if ($year > 0) {
+try {
+    $year = (int)($_GET['year'] ?? 0);
+
+    // 対象営業所IDの決定
+    $targetOfficeId = 0;
+    if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager') {
+        $targetOfficeId = (int)($_SESSION['office_id'] ?? 0);
+    } else {
+        $targetOfficeId = (int)($_GET['office_id'] ?? 0);
+    }
+
+    // パラメータチェック (修正: targetOfficeId <= 0 のチェックを外す)
+    if ($year <= 0) {
+        echo json_encode(array_fill(1, 12, 'none'));
+        exit;
+    }
+
     $dbh = getDb();
-    $status = getCpFixedStatusByYear($year, $dbh);
+
+    // デフォルトは全て 'none' (未登録)
     $completeStatus = [];
     for ($i = 1; $i <= 12; $i++) {
-        $completeStatus[$i] = $status[$i] ?? 'none';
+        $completeStatus[$i] = 'none';
     }
-    header('Content-Type: application/json');
+
+    // -----------------------------------------------------
+    // ステータスの取得クエリ
+    // -----------------------------------------------------
+    if ($targetOfficeId > 0) {
+        // A. 特定の営業所: 親と子を結合して子ステータスを取得
+        $sql = "
+            SELECT 
+                m.month, 
+                t.status 
+            FROM monthly_cp m
+            INNER JOIN monthly_cp_time t ON m.id = t.monthly_cp_id
+            WHERE m.year = ? 
+            AND t.office_id = ?
+        ";
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute([$year, $targetOfficeId]);
+    } else {
+        // B. 全社 (AdminでAll選択時): 親テーブルのステータスをそのまま取得
+        $sql = "SELECT month, status FROM monthly_cp WHERE year = ?";
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute([$year]);
+    }
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // データがある月だけ status で上書き
+    foreach ($rows as $row) {
+        $m = (int)$row['month'];
+        $completeStatus[$m] = $row['status'] ?: 'draft';
+    }
+
     echo json_encode($completeStatus);
-} else {
+} catch (Exception $e) {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid year']);
+    echo json_encode(['error' => $e->getMessage()]);
 }

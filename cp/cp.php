@@ -1,6 +1,52 @@
 <?php
+require_once '../includes/auth_check.php';
 require_once '../includes/database.php';
 require_once '../includes/cp_ui_functions.php';
+
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
+?>
+    <!DOCTYPE html>
+    <html lang="ja">
+
+    <head>
+        <meta charset="UTF-8">
+        <title>リダイレクト中</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+
+    <body>
+        <div class="modal fade" id="adminRedirectModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title" id="staticBackdropLabel"><i class="bi bi-exclamation-triangle-fill"></i> アクセス制限</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>管理者権限（Admin）では、この画面からの新規登録は行えません。</strong></p>
+                        <p>新規作成は各拠点の担当者に一任されています。<br>状況確認や修正は「CP編集画面」へ移動してください。</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" id="redirectBtn">CP編集画面へ移動</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                var myModal = new bootstrap.Modal(document.getElementById('adminRedirectModal'));
+                myModal.show();
+                document.getElementById('redirectBtn').addEventListener('click', function() {
+                    window.location.href = 'cp_edit.php';
+                });
+            });
+        </script>
+    </body>
+
+    </html>
+<?php
+    exit;
+}
 
 // DB接続
 $dbh = getDb();
@@ -12,12 +58,29 @@ try {
     $selectedMonth = (int)($_GET['month'] ?? 4);
     $currentYear = $selectedYear;
 
+    // 営業所リストの取得
+    if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager' && !empty($_SESSION['office_id'])) {
+        $stmt = $dbh->prepare("SELECT * FROM offices WHERE id = ?");
+        $stmt->execute([$_SESSION['office_id']]);
+    } else {
+        $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
+    }
+    $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 初期選択IDの決定
+    $selectedOffice = 0;
+    if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager') {
+        $selectedOffice = (int)$_SESSION['office_id'];
+    } elseif (!empty($offices)) {
+        $selectedOffice = (int)$offices[0]['id'];
+    }
+
     // 各月のステータス
-    $cpStatusList = getCpStatusByYear($currentYear, $dbh);
+    $cpStatusList = getCpStatusByYear($currentYear, $dbh, $selectedOffice);
     $statusColors = ['fixed' => 'success', 'draft' => 'primary', 'none' => 'secondary'];
 
     // --------------------------------------------------------
-    // 1. 収入カテゴリと収入項目を取得 (営業所情報も結合)
+    // 1. 収入カテゴリと収入項目を取得 (ソート)
     // --------------------------------------------------------
     $revenueQuery = "SELECT 
                         c.id AS category_id, 
@@ -56,8 +119,9 @@ try {
     }
 
     // --------------------------------------------------------
-    // 2. 勘定科目と詳細 (営業所情報も結合)
+    // 2. 勘定科目と詳細 (ソート順)
     // --------------------------------------------------------
+    // accounts.sort_order, details.sort_order を優先
     $accountsQuery = "SELECT 
                         a.id AS account_id,
                         a.name AS account_name,
@@ -69,7 +133,7 @@ try {
                         FROM accounts a
                         LEFT JOIN details d ON a.id = d.account_id
                         LEFT JOIN offices o ON d.office_id = o.id
-                        ORDER BY a.id ASC, d.id ASC";
+                        ORDER BY a.sort_order ASC, a.id ASC, d.sort_order ASC, d.id ASC";
     $accountsStmt = $dbh->prepare($accountsQuery);
     $accountsStmt->execute();
     $accountsDetails = $accountsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -93,12 +157,6 @@ try {
             ];
         }
     }
-
-    // 営業所リスト
-    $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
-    $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    // 初期選択は最初の営業所
-    $selectedOffice = $offices[0]['id'] ?? 0;
 } catch (Exception $e) {
     echo "エラー: " . $e->getMessage();
     $accounts = [];
@@ -127,7 +185,6 @@ try {
             width: 150px;
         }
 
-        /* 全社選択時の無効化スタイル調整 */
         .form-control:disabled {
             background-color: #f8f9fa;
             color: #6c757d;
@@ -147,55 +204,37 @@ try {
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            CP
-                        </a>
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">CP</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            見通し
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">見通し</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            予定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">予定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            月末見込み
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">月末見込み</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            概算
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">概算</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算実績編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            勘定科目設定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">勘定科目設定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account.php">勘定科目登録</a></li>
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目リスト</a></li>
@@ -203,6 +242,10 @@ try {
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="../users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -210,12 +253,12 @@ try {
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp; user name さん
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="../profile/password_edit.php">パスワード変更</a></li>
+                            <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -291,7 +334,6 @@ try {
                     <div class="col-md-2">
                         <label>営業所</label>
                         <select id="officeSelect" class="form-select form-select-sm">
-                            <option value="all">全社 (集計のみ)</option>
                             <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
@@ -415,7 +457,6 @@ try {
                             <?php endforeach; ?>
                         <?php endforeach; ?>
 
-
                         <tr class="table-light">
                             <td colspan="5">
                                 <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon toggle-icon-l1" data-bs-toggle="collapse" data-bs-target=".l1-expense-group" aria-expanded="false">
@@ -473,429 +514,11 @@ try {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-
-            // --- グローバル変数 ---
-            const form = document.getElementById('cpForm');
-            // 時間データ保持用オブジェクト
-            const officeTimeData = {};
-
-            const officeSelect = document.getElementById('officeSelect');
-            const hourlyRateInput = document.getElementById('hourlyRate');
-            const registerButton = document.querySelector('.register-button');
-
-            // 総時間表示用エレメント
-            const totalHoursInput = document.getElementById('totalHours');
-
-            // 時間・人数入力フィールド
-            const timeFields = {
-                standard_hours: document.getElementById('standardHours'),
-                overtime_hours: document.getElementById('overtimeHours'),
-                transferred_hours: document.getElementById('transferredHours'),
-                fulltime_count: document.getElementById('fulltimeCount'),
-                contract_count: document.getElementById('contractCount'),
-                dispatch_count: document.getElementById('dispatchCount')
-            };
-
-            const revenueInputs = document.querySelectorAll('.revenue-input');
-            const expenseInputs = document.querySelectorAll('.detail-input');
-
-            let currentOfficeId = officeSelect.value;
-
-            // --- ヘルパー関数: 小数点誤差を解消する (小数点第2位まで) ---
-            function roundTo2(num) {
-                if (num === '' || num === null || num === undefined) return '';
-                const f = parseFloat(num);
-                if (isNaN(f)) return '';
-                // 100倍して四捨五入し、100で割ることで小数点第2位までに丸める
-                return Math.round(f * 100) / 100;
-            }
-
-            // --- 営業所切り替え時のデータ退避 ---
-            function captureCurrentOfficeTime(oid) {
-                // 「全社」モードのときはデータを保存しない（集計値なので）
-                if (!oid || oid === 'all') return;
-
-                const data = officeTimeData[oid] || {};
-
-                // 時間・人数を保存
-                for (const key in timeFields) {
-                    const input = timeFields[key];
-                    if (input) {
-                        // 保存時も念のため丸め処理を通す（時間系のみ）
-                        if (key.includes('hours')) {
-                            data[key] = roundTo2(input.value);
-                        } else {
-                            data[key] = input.value;
-                        }
-                    }
-                }
-                officeTimeData[oid] = data;
-            }
-
-            // --- 営業所切り替え時のデータ復元 (集計ロジック追加) ---
-            function renderOfficeTime(oid) {
-                // まず入力を有効化・クリア
-                for (const key in timeFields) {
-                    const input = timeFields[key];
-                    if (input) {
-                        input.disabled = false;
-                        input.value = '';
-                    }
-                }
-
-                // 「全社」選択時の集計処理
-                if (oid === 'all') {
-                    // 全営業所のデータを合計
-                    const totals = {
-                        standard_hours: 0,
-                        overtime_hours: 0,
-                        transferred_hours: 0,
-                        fulltime_count: 0,
-                        contract_count: 0,
-                        dispatch_count: 0
-                    };
-
-                    // officeTimeData に保存されている全データを走査
-                    for (const id in officeTimeData) {
-                        const data = officeTimeData[id];
-                        totals.standard_hours += parseFloat(data.standard_hours) || 0;
-                        totals.overtime_hours += parseFloat(data.overtime_hours) || 0;
-                        totals.transferred_hours += parseFloat(data.transferred_hours) || 0;
-                        totals.fulltime_count += parseInt(data.fulltime_count) || 0;
-                        totals.contract_count += parseInt(data.contract_count) || 0;
-                        totals.dispatch_count += parseInt(data.dispatch_count) || 0;
-                    }
-
-                    // 合計値をセットし、入力を無効化
-                    for (const key in totals) {
-                        const input = timeFields[key];
-                        if (input) {
-                            // 時間系の場合は丸め処理
-                            if (key.includes('hours')) {
-                                input.value = roundTo2(totals[key]);
-                            } else {
-                                input.value = totals[key];
-                            }
-                            input.disabled = true; // 全社モードでは編集不可
-                        }
-                    }
-                    return;
-                }
-
-                // 通常の営業所選択時
-                if (oid && officeTimeData[oid]) {
-                    const data = officeTimeData[oid];
-                    for (const key in timeFields) {
-                        const input = timeFields[key];
-                        if (input) {
-                            const val = data[key] !== undefined ? data[key] : '';
-                            // 復元時も丸め処理を通してセット
-                            if (key.includes('hours')) {
-                                input.value = roundTo2(val);
-                            } else {
-                                input.value = val;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- 行のフィルタリング (営業所による表示制御) ---
-            function filterDetailsByOffice() {
-                const selectedOfficeId = officeSelect.value;
-                const detailRows = document.querySelectorAll('.detail-row');
-
-                detailRows.forEach(row => {
-                    const rowOfficeId = row.getAttribute('data-office-id');
-                    const inputs = row.querySelectorAll('input');
-
-                    // 「全社」選択時はすべて表示
-                    if (selectedOfficeId === 'all') {
-                        row.style.display = '';
-                        // 全社モードのときは明細入力も無効化する（誤入力防止）
-                        inputs.forEach(input => input.disabled = true);
-                    }
-                    // 通常モード：共通(common) または 選択された営業所 と一致する場合に表示
-                    else if (rowOfficeId === 'common' || rowOfficeId === selectedOfficeId) {
-                        row.style.display = '';
-                        inputs.forEach(input => input.disabled = false);
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
-
-                calculate();
-
-                // 全社モードなら登録ボタンを無効化
-                if (selectedOfficeId === 'all') {
-                    registerButton.disabled = true;
-                    registerButton.textContent = '全社モードでは登録できません';
-                } else {
-                    registerButton.disabled = false;
-                    registerButton.textContent = '登録';
-                }
-            }
-
-            // --- メイン計算関数 ---
-            function calculate() {
-                let currentHours = 0;
-                // 現在のDOM上の入力値を取得（全社モードなら合計値が入っている）
-                const std = parseFloat(timeFields.standard_hours.value) || 0;
-                const ovt = parseFloat(timeFields.overtime_hours.value) || 0;
-                const trn = parseFloat(timeFields.transferred_hours.value) || 0;
-                currentHours = std + ovt + trn;
-
-                // 総時間を画面に反映 (丸め処理付き)
-                if (totalHoursInput) {
-                    totalHoursInput.value = roundTo2(currentHours);
-                }
-
-                const hourlyRate = parseFloat(hourlyRateInput.value) || 0;
-                // 総時間を丸めてから賃率を掛ける
-                const laborCost = Math.round(roundTo2(currentHours) * hourlyRate);
-
-                document.getElementById('info-labor-cost').textContent = laborCost.toLocaleString();
-
-                // 2. 収入合計 (表示されている行のみ集計)
-                let revenueTotal = 0;
-                const revenueCategoryTotals = {};
-
-                revenueInputs.forEach(input => {
-                    const row = input.closest('tr');
-                    // 非表示行は計算対象外
-                    if (row && row.style.display === 'none') return;
-
-                    const val = parseFloat(input.value) || 0;
-                    const categoryId = input.getAttribute('data-category-id');
-                    revenueTotal += val;
-                    if (!revenueCategoryTotals[categoryId]) revenueCategoryTotals[categoryId] = 0;
-                    revenueCategoryTotals[categoryId] += val;
-                });
-
-                document.getElementById('total-revenue').textContent = Math.round(revenueTotal).toLocaleString();
-                document.getElementById('info-revenue-total').textContent = Math.round(revenueTotal).toLocaleString();
-
-                Object.keys(revenueCategoryTotals).forEach(categoryId => {
-                    const elem = document.getElementById(`total-revenue-category-${categoryId}`);
-                    if (elem) elem.textContent = Math.round(revenueCategoryTotals[categoryId]).toLocaleString();
-                });
-
-                // 3. 経費合計 (表示されている行のみ集計)
-                let expenseTotal = 0;
-                const accountTotals = {};
-
-                expenseInputs.forEach(input => {
-                    const row = input.closest('tr');
-                    if (row && row.style.display === 'none') return;
-
-                    const val = parseFloat(input.value) || 0;
-                    const accountId = input.getAttribute('data-account-id');
-                    expenseTotal += val;
-                    if (!accountTotals[accountId]) accountTotals[accountId] = 0;
-                    accountTotals[accountId] += val;
-                });
-
-                document.getElementById('total-expense').textContent = Math.round(expenseTotal).toLocaleString();
-                document.getElementById('info-expense-total').textContent = Math.round(expenseTotal).toLocaleString();
-
-                Object.keys(accountTotals).forEach(accountId => {
-                    const elem = document.getElementById(`total-account-${accountId}`);
-                    if (elem) elem.textContent = Math.round(accountTotals[accountId]).toLocaleString();
-                });
-
-                // 4. 差引収益 (収入 - 経費)
-                const grossProfit = revenueTotal - expenseTotal;
-                document.getElementById('info-gross-profit').textContent = Math.round(grossProfit).toLocaleString();
-            }
-
-            // --- イベントリスナー ---
-
-            // 入力イベント
-            form.addEventListener('input', function(event) {
-                if (event.target.classList.contains('time-input') ||
-                    event.target.id === 'hourlyRate' ||
-                    event.target.classList.contains('revenue-input') ||
-                    event.target.classList.contains('detail-input')) {
-                    calculate();
-                }
-            });
-
-            // 営業所変更
-            officeSelect.addEventListener('change', function() {
-                // 前の営業所のデータを保存 (全社モード以外の場合)
-                captureCurrentOfficeTime(currentOfficeId);
-
-                // 新しい営業所IDを取得
-                currentOfficeId = officeSelect.value;
-
-                // 新しい営業所のデータを復元 (全社なら集計)
-                renderOfficeTime(currentOfficeId);
-
-                // 行の表示切り替え
-                filterDetailsByOffice();
-            });
-
-            // 年度変更
-            window.onYearChange = function() {
-                const year = document.getElementById('yearSelect').value;
-                const url = new URL(window.location.href);
-                url.searchParams.set('year', year);
-                window.location.href = url.toString();
-            };
-
-            // --- 送信時処理 ---
-            form.addEventListener("submit", function(e) {
-                // 送信前に現在の営業所データを保存
-                captureCurrentOfficeTime(currentOfficeId);
-
-                // 「全社」が選択されている状態での送信チェック
-                if (currentOfficeId === 'all') {
-                    e.preventDefault();
-                    alert('「全社」モードは閲覧用です。各営業所を選択して登録してください。');
-                    return;
-                }
-
-                // 全営業所のデータに共通の賃率をセット
-                const rate = hourlyRateInput.value;
-                for (const officeId in officeTimeData) {
-                    if (officeTimeData[officeId]) {
-                        officeTimeData[officeId]['hourly_rate'] = rate;
-                    }
-                }
-                document.getElementById("officeTimeData").value = JSON.stringify(officeTimeData);
-
-                // 収入・経費データをJSONにまとめて hidden にセット
-                const bulkData = {
-                    revenues: {},
-                    accounts: {}
-                };
-
-                // 収入データの収集 (表示・非表示に関わらず全ての .revenue-input を取得)
-                document.querySelectorAll('.revenue-input').forEach(input => {
-                    const id = input.getAttribute('data-id'); // HTMLに追加した data-id
-                    const val = input.value;
-                    if (id) {
-                        bulkData.revenues[id] = val;
-                    }
-                });
-
-                // 経費データの収集 (表示・非表示に関わらず全ての .detail-input を取得)
-                document.querySelectorAll('.detail-input').forEach(input => {
-                    const id = input.getAttribute('data-id'); // HTMLに追加した data-id
-                    const val = input.value;
-                    if (id) {
-                        bulkData.accounts[id] = val;
-                    }
-                });
-
-                // JSON化して hidden input にセット
-                document.getElementById('bulkJsonData').value = JSON.stringify(bulkData);
-            });
-
-            // --- アコーディオン制御 ---
-            const l1Toggles = [{
-                    btn: document.querySelector('[data-bs-target=".l1-revenue-group"]'),
-                    targetClass: '.l1-revenue-group'
-                },
-                {
-                    btn: document.querySelector('[data-bs-target=".l1-expense-group"]'),
-                    targetClass: '.l1-expense-group'
-                }
-            ];
-
-            l1Toggles.forEach(l1 => {
-                if (!l1.btn) return;
-                const iconElementL1 = l1.btn.querySelector('i');
-                const l2Rows = document.querySelectorAll(l1.targetClass);
-
-                l2Rows.forEach(l2Row => {
-                    l2Row.addEventListener('show.bs.collapse', () => {
-                        if (iconElementL1) {
-                            iconElementL1.classList.remove('bi-plus-lg');
-                            iconElementL1.classList.add('bi-dash-lg');
-                        }
-                    });
-                    l2Row.addEventListener('hide.bs.collapse', () => {
-                        setTimeout(() => {
-                            const anyOpen = Array.from(l2Rows).some(el => el.classList.contains('show') || el.classList.contains('collapsing'));
-                            if (!anyOpen && iconElementL1) {
-                                iconElementL1.classList.remove('bi-dash-lg');
-                                iconElementL1.classList.add('bi-plus-lg');
-                            }
-                        }, 350);
-
-                        const l2Button = l2Row.querySelector('.toggle-icon-l2');
-                        if (l2Button) {
-                            const l3TargetSelector = l2Button.getAttribute('data-bs-target');
-                            if (l3TargetSelector) {
-                                document.querySelectorAll(l3TargetSelector).forEach(el => {
-                                    const inst = bootstrap.Collapse.getInstance(el);
-                                    if (inst) inst.hide();
-                                });
-                                const iconL2 = l2Button.querySelector('i');
-                                if (iconL2) {
-                                    iconL2.classList.remove('bi-dash');
-                                    iconL2.classList.add('bi-plus');
-                                }
-                            }
-                        }
-                    });
-                });
-            });
-
-            // L2 ボタン (toggle-icon-l2)
-            document.querySelectorAll('.toggle-icon-l2').forEach(function(l2Button) {
-                const iconElementL2 = l2Button.querySelector('i');
-                const l3TargetSelector = l2Button.getAttribute('data-bs-target');
-                if (!l3TargetSelector) return;
-                const l3Rows = document.querySelectorAll(l3TargetSelector);
-
-                l3Rows.forEach(l3Row => {
-                    l3Row.addEventListener('show.bs.collapse', () => {
-                        if (iconElementL2) {
-                            iconElementL2.classList.remove('bi-plus');
-                            iconElementL2.classList.add('bi-dash');
-                        }
-                    });
-                    l3Row.addEventListener('hide.bs.collapse', () => {
-                        setTimeout(() => {
-                            const anyOpen = Array.from(l3Rows).some(el => el.classList.contains('show') || el.classList.contains('collapsing'));
-                            if (!anyOpen && iconElementL2) {
-                                iconElementL2.classList.remove('bi-dash');
-                                iconElementL2.classList.add('bi-plus');
-                            }
-                        }, 350);
-                    });
-                });
-            });
-
-            // --- アラート処理 ---
-            const errorAlertElem = document.getElementById('errorAlert');
-            if (errorAlertElem) {
-                errorAlertElem.addEventListener('close.bs.alert', function() {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete('error');
-                    window.history.replaceState({}, document.title, url.pathname + url.search);
-                });
-            }
-            const successAlertElem = document.getElementById('successAlert');
-            if (successAlertElem) {
-                successAlertElem.addEventListener('close.bs.alert', function() {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete('success');
-                    url.searchParams.delete('month');
-                    window.history.replaceState({}, document.title, url.pathname + url.search);
-                });
-            }
-
-            // 初期化
-            // 初回が「全社」でない場合は通常の描画、「全社」の場合は集計描画
-            renderOfficeTime(currentOfficeId);
-            filterDetailsByOffice();
-            calculate();
-        });
+        // PHPのデータをグローバル変数として定義し、外部JSファイルから参照できるようにする
+        window.cpStatusMap = <?= json_encode($cpStatusList) ?>;
     </script>
+    <script src="../js/cp.js"></script>
+
 </body>
 
 </html>

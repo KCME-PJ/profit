@@ -2,33 +2,58 @@
 require_once 'database.php';
 
 /**
- * 指定された年度における各月のCPデータ状態を返す
- * - "none"：未登録
- * - "draft"：登録済（未確定）
- * - "fixed"：確定済
- *
- * @param int $year 対象の年
- * @param PDO|null $dbh DBハンドル
+ * 指定された年度・営業所における各月のCPデータ状態を返す
+ * * @param int $year 対象の年
+ * @param PDO $dbh DBハンドル
+ * @param int $officeId 対象営業所ID (0の場合は全社または未指定)
  * @return array [1 => 'none', 2 => 'draft', ..., 12 => 'fixed']
  */
-function getCpStatusByYear($year, $dbh = null)
+function getCpStatusByYear(int $year, $dbh, int $officeId = 0)
 {
     if (!$dbh) {
         $dbh = getDb();
     }
 
     // 初期化（1～12月を全て "none" に）
-    $statusList = array_fill(1, 12, 'none');
+    $statusList = [];
+    for ($i = 1; $i <= 12; $i++) {
+        $statusList[$i] = 'none';
+    }
 
-    // 月ごとの status を取得
-    $stmt = $dbh->prepare("SELECT month, status FROM monthly_cp WHERE year = ?");
-    $stmt->execute([$year]);
+    if ($year <= 0) {
+        return $statusList;
+    }
+
+    // -----------------------------------------------------
+    // ステータスの取得ロジック
+    // -----------------------------------------------------
+    if ($officeId > 0) {
+        // 特定の営業所が指定されている場合
+        // 親(monthly_cp)と子(monthly_cp_time)を結合して取得
+        $sql = "
+            SELECT 
+                m.month, 
+                t.status 
+            FROM monthly_cp m
+            INNER JOIN monthly_cp_time t ON m.id = t.monthly_cp_id
+            WHERE m.year = ? 
+            AND t.office_id = ?
+        ";
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute([$year, $officeId]);
+    } else {
+        $sql = "SELECT month, status FROM monthly_cp WHERE year = ?";
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute([$year]);
+    }
 
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $month = (int)$row['month'];
         $status = $row['status'] ?? 'draft';
+
+        // draft でも fixed でもない謎の値が入っていた場合のガード
         if (!in_array($status, ['fixed', 'draft'])) {
-            $status = 'draft'; // 未確定でも何か入っていれば draft 扱い
+            $status = 'draft';
         }
         $statusList[$month] = $status;
     }
@@ -62,27 +87,5 @@ function getAvailableCpYears($dbh = null)
     }
 
     sort($years);
-    return $years;
-}
-
-function getCpFixedStatusByYear(int $year, PDO $dbh): array
-{
-    $statuses = [];
-
-    for ($month = 1; $month <= 12; $month++) {
-        $statuses[$month] = 'none'; // 初期は未登録
-    }
-
-    $stmt = $dbh->prepare("SELECT month, status FROM monthly_cp WHERE year = :year");
-    $stmt->execute([':year' => $year]);
-
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $month = (int)$row['month'];
-        $status = $row['status'] ?? 'draft';
-        if (!in_array($status, ['fixed', 'draft'])) {
-            $status = 'draft';
-        }
-        $statuses[$month] = $status;
-    }
-    return $statuses;
+    return $years; // array_uniqueは不要（in_arrayチェック済み）
 }

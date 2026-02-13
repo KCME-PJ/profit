@@ -1,13 +1,33 @@
 <?php
+require_once '../includes/auth_check.php';
 require_once '../includes/database.php';
 require_once '../includes/cp_functions.php';
+
+// ユーザーコンテキストの作成
+$userContext = [
+    'user_id'   => $_SESSION['user_id'] ?? 0,
+    'office_id' => $_SESSION['office_id'] ?? null,
+    'role'      => $_SESSION['role'] ?? 'viewer',
+    'username'  => $_SESSION['username'] ?? 'unknown'
+];
 
 try {
     // フォーム POST データを取得
     $data = $_POST;
 
-    // ★追加: bulkJsonData が存在する場合はデコードしてマージする
-    // cp.php のJSで全ての入力値をまとめて送信しているので、これを優先して使用する
+    // DB接続
+    $dbh = getDb();
+
+    // -----------------------------------------------------
+    // JSONデータのデコード処理
+    // -----------------------------------------------------
+
+    // 1. 時間データ (officeTimeData)
+    if (isset($data['officeTimeData']) && is_string($data['officeTimeData'])) {
+        $data['officeTimeData'] = json_decode($data['officeTimeData'], true) ?? [];
+    }
+
+    // 2. 一括データ (bulkJsonData) のマージ
     if (!empty($_POST['bulkJsonData'])) {
         $bulkData = json_decode($_POST['bulkJsonData'], true);
 
@@ -17,16 +37,17 @@ try {
                 $data['revenues'] = $bulkData['revenues'];
             }
             // 経費データの取得
-            // (cp.php のJSでは 'accounts' というキーで作成)
             if (isset($bulkData['accounts']) && is_array($bulkData['accounts'])) {
-                $data['accounts'] = $bulkData['accounts'];
+                $data['amounts'] = $bulkData['accounts'];
             }
         }
     }
 
-    // 登録処理
-    // registerMonthlyCp関数は $data['revenues'], $data['accounts'] を参照する仕様
-    registerMonthlyCp($data);
+    // -----------------------------------------------------
+    // 登録処理実行
+    // -----------------------------------------------------
+    // 第3引数に $userContext を渡すことで、Managerが他拠点を消す事故を防ぐ
+    registerMonthlyCp($data, $dbh, $userContext);
 
     // 成功後に年度・月を付けてリダイレクト（選択を保持）
     $year  = isset($data['year'])  ? (int)$data['year']  : '';
@@ -42,10 +63,8 @@ try {
     exit;
 } catch (Exception $e) {
     // エラーメッセージをエンコードしてリダイレクト（選択を保持）
-    $error = urlencode($e->getMessage());
     $year  = isset($_POST['year'])  ? (int)$_POST['year']  : '';
     $month = isset($_POST['month']) ? (int)$_POST['month'] : '';
-
     $query = http_build_query([
         'error' => $e->getMessage(),
         'year'  => $year,
