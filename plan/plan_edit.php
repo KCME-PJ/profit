@@ -1,12 +1,17 @@
 <?php
+require_once '../includes/auth_check.php';
 require_once '../includes/database.php';
-require_once '../includes/plan_ui_functions.php';
 
 // データベース接続
 $dbh = getDb();
 
+// ユーザー権限の取得
+$userRole = $_SESSION['role'] ?? 'viewer';
+$isAdmin = ($userRole === 'admin');
+$isManager = ($userRole === 'manager');
+
 try {
-    // 月次 plan 登録済みの年と月を取得
+    // 1. 月次 plan 登録済みの年と月を取得
     $query = "SELECT DISTINCT year, month FROM monthly_plan ORDER BY year DESC, month DESC";
     $stmt = $dbh->prepare($query);
     $stmt->execute();
@@ -29,7 +34,7 @@ try {
     unset($months);
 
     // --------------------------------------------------------
-    // 1. 収入カテゴリと収入項目を取得 (営業所情報を結合)
+    // 2. 収入カテゴリと収入項目を取得 (営業所情報を結合)
     // --------------------------------------------------------
     $revenueQuery = "SELECT 
                         c.id AS category_id, 
@@ -68,7 +73,7 @@ try {
     }
 
     // --------------------------------------------------------
-    // 2. 勘定科目、詳細情報の取得 (営業所情報を結合)
+    // 3. 勘定科目、詳細情報の取得 (営業所情報を結合)
     // --------------------------------------------------------
     $accountsQuery = "SELECT 
                         a.id AS account_id, 
@@ -81,7 +86,7 @@ try {
                       FROM accounts a
                       LEFT JOIN details d ON a.id = d.account_id
                       LEFT JOIN offices o ON d.office_id = o.id
-                      ORDER BY a.id ASC, d.id ASC";
+                      ORDER BY a.sort_order ASC, a.id ASC, d.sort_order ASC, d.id ASC";
     $accountsStmt = $dbh->prepare($accountsQuery);
     $accountsStmt->execute();
     $accountsDetails = $accountsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -111,9 +116,17 @@ try {
 }
 
 // 営業所リスト
-$stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
+if ($isManager && !empty($_SESSION['office_id'])) {
+    $stmt = $dbh->prepare("SELECT * FROM offices WHERE id = ?");
+    $stmt->execute([$_SESSION['office_id']]);
+} else {
+    $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
+}
 $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $selectedOffice = $offices[0]['id'] ?? 0;
+
+// デフォルト年度
+$currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
 ?>
 
 <!DOCTYPE html>
@@ -132,7 +145,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     <script src="../js/plan_edit_head.js" defer></script>
 </head>
 
-<body>
+<body data-user-role="<?= htmlspecialchars($userRole) ?>">
     <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="../index.html">採算表</a>
@@ -148,7 +161,9 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             aria-expanded="false">CP
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
+                            <?php if (!$isAdmin): ?>
+                                <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
+                            <?php endif; ?>
                             <li><a class="dropdown-item" href="../cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
@@ -195,6 +210,10 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細リスト</a></li>
                             <li><a class="dropdown-item" href="../offices/office.php">係登録</a></li>
                             <li><a class="dropdown-item" href="../offices/office_list.php">係リスト</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="../users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -202,12 +221,13 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="../profile/password_edit.php">パスワード変更</a></li>
+                            <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -216,18 +236,18 @@ $selectedOffice = $offices[0]['id'] ?? 0;
     </nav>
 
     <div class="container mt-2">
-        <?php if (isset($_GET['error'])): ?>
-            <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert">
-                <?= htmlspecialchars($_GET['error']) ?>
+        <?php if (!empty($_GET['error'])): ?>
+            <div id="errorAlert" class="alert alert-danger alert-dismissible fade show mt-5 position-relative" style="z-index: 1050;" role="alert">
+                <?= nl2br(htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8')) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
             </div>
         <?php endif; ?>
         <?php if (isset($_GET['success'])):
             $sy = isset($_GET['year']) ? (int)$_GET['year'] : null;
             $sm = isset($_GET['month']) ? (int)$_GET['month'] : null;
-            $msg = isset($_GET['msg']) ? htmlspecialchars($_GET['msg']) : '登録が完了しました。';
+            $msg = isset($_GET['msg']) ? htmlspecialchars($_GET['msg'], ENT_QUOTES, 'UTF-8') : '処理が完了しました。';
         ?>
-            <div id="successAlert" class="alert alert-success alert-dismissible fade show" role="alert">
+            <div id="successAlert" class="alert alert-success alert-dismissible fade show mt-5 position-relative" style="z-index: 1050;" role="alert">
                 <?php if ($sy && $sm): ?>
                     <?= htmlspecialchars("{$sy}年度 {$sm}月") ?> の<?= $msg ?>
                 <?php else: ?>
@@ -254,7 +274,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             $month = ($startMonth + $i - 1) % 12 + 1;
                             $colorClass = 'secondary';
                         ?>
-                            <button type="button" id="monthBtn<?= $month ?>" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled>
+                            <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1 month-btn" data-month="<?= $month ?>">
                                 <?= $month ?>月
                             </button>
                         <?php endfor; ?>
@@ -270,9 +290,6 @@ $selectedOffice = $offices[0]['id'] ?? 0;
 
             <div class="info-box">
                 <div class="row align-items-end mb-2">
-                    <?php
-                    $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
-                    ?>
                     <div class="col-md-2">
                         <label>年度</label>
                         <select id="yearSelect" name="year" class="form-select form-select-sm">
@@ -293,13 +310,15 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <div class="col-md-2">
                         <label>営業所</label>
                         <select id="officeSelect" class="form-select form-select-sm">
-                            <option value="all">全社 (閲覧のみ)</option> <?php foreach ($offices as $office): ?>
+                            <option value="all">全社 (閲覧のみ)</option>
+                            <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <input type="hidden" id="targetOfficeId" name="target_office_id">
 
                     <div class="col-md-3">
                         <strong>収入合計：</strong>¥<span id="info-revenue-total">0</span><br>
@@ -312,9 +331,10 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                 </div>
                 <div class="row align-items-end mb-2">
                     <input type="hidden" id="planId" name="plan_id">
-                    <input type="hidden" id="bulkJsonData" name="bulk_json_data">
                     <input type="hidden" id="plStatus" name="status" value="">
+                    <input type="hidden" id="bulkJsonData" name="bulk_json_data">
                     <input type="hidden" id="hiddenHourlyRate" name="hidden_hourly_rate">
+                    <input type="hidden" id="updatedAt" name="updated_at" value="">
 
                     <div class="col-md-2">
                         <label>賃率</label>
@@ -355,8 +375,34 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                     <div class="col-md-6"></div>
                 </div>
                 <input type="hidden" name="officeTimeData" id="officeTimeData">
-                <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
-                <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
+
+                <?php if ($isAdmin): ?>
+                    <button type="button" class="btn btn-outline-warning btn-sm" id="btnReject" style="display:none;" data-bs-toggle="modal" data-bs-target="#rejectModal">
+                        <i class="bi bi-arrow-counterclockwise"></i> 差し戻し (Draftへ)
+                    </button>
+
+                    <div id="adminParentControls" style="display:none;" class="d-inline-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="btnParentFix" disabled data-bs-toggle="modal" data-bs-target="#parentFixModal">
+                            <i class="bi bi-check2-all"></i> 月次確定 (Parent Fix)
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnParentUnlock" style="display:none;" data-bs-toggle="modal" data-bs-target="#parentUnlockModal">
+                            <i class="bi bi-unlock-fill"></i> ロック解除 (Unlock)
+                        </button>
+                        <span id="parentFixedLabel" class="badge bg-success" style="display:none;">
+                            <i class="bi bi-lock-fill"></i> 月次確定済
+                        </span>
+                        <span id="unfixedBadge" class="badge bg-danger" style="display:none; cursor: pointer;" data-bs-toggle="modal" data-bs-target="#unfixedListModal">
+                            <i class="bi bi-exclamation-circle-fill"></i> 未確定: <span id="unfixedCount">0</span>件
+                        </span>
+                    </div>
+                    <div style="display:none;">
+                        <button class="register-button1"></button>
+                        <button class="register-button2"></button>
+                    </div>
+                <?php else: ?>
+                    <button type="button" class="btn btn-outline-danger btn-sm register-button1" data-bs-toggle="modal" data-bs-target="#confirmModal">修正</button>
+                    <button type="button" class="btn btn-outline-success btn-sm register-button2" data-bs-toggle="modal" data-bs-target="#fixModal">確定</button>
+                <?php endif; ?>
             </div>
 
             <div class="table-container">
@@ -385,7 +431,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <tr class="collapse l1-revenue-group">
                                 <td class="ps-4" colspan="4">
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
-                                        data-bs-target="#child-rev-<?= $categoryId ?>" aria-expanded="false">
+                                        data-bs-target=".child-group-rev-<?= $categoryId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
                                     <?= htmlspecialchars($category['name']) ?>
@@ -397,7 +443,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                                 $revOfficeId = empty($item['office_id']) ? 'common' : $item['office_id'];
                                 $revOfficeName = empty($item['office_name']) ? '共通' : $item['office_name'];
                                 ?>
-                                <tr class="collapse detail-row" id="child-rev-<?= $categoryId ?>" data-office-id="<?= htmlspecialchars($revOfficeId) ?>">
+                                <tr class="collapse detail-row child-group-rev-<?= $categoryId ?>" data-office-id="<?= htmlspecialchars($revOfficeId) ?>">
                                     <td></td>
                                     <td class="text-center">
                                         <span class="badge bg-light text-dark border"><?= htmlspecialchars($revOfficeName) ?></span>
@@ -435,7 +481,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                             <tr class="collapse l1-expense-group">
                                 <td class="ps-4" colspan="4">
                                     <button type="button" class="btn btn-sm btn-light btn-icon toggle-icon" data-bs-toggle="collapse"
-                                        data-bs-target="#child-<?= $accountId ?>" aria-expanded="false">
+                                        data-bs-target=".child-group-acc-<?= $accountId ?>" aria-expanded="false">
                                         <i class="bi bi-plus icon-small"></i>
                                     </button>
                                     <?= htmlspecialchars($account['name']) ?>
@@ -450,7 +496,7 @@ $selectedOffice = $offices[0]['id'] ?? 0;
                                 $officeIdStr = empty($detail['office_id']) ? 'common' : $detail['office_id'];
                                 $officeNameDisplay = empty($detail['office_name']) ? '全社共通' : $detail['office_name'];
                                 ?>
-                                <tr class="collapse detail-row" id="child-<?= $accountId ?>" data-office-id="<?= htmlspecialchars($officeIdStr) ?>">
+                                <tr class="collapse detail-row child-group-acc-<?= $accountId ?>" data-office-id="<?= htmlspecialchars($officeIdStr) ?>">
                                     <td></td>
                                     <td class="text-center">
                                         <span class="badge bg-light text-dark border">
@@ -483,40 +529,119 @@ $selectedOffice = $offices[0]['id'] ?? 0;
             <input type="hidden" name="action_type" id="planMode" value="update">
         </form>
 
-        <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="confirmModalLabel">修正の確認</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
-                    </div>
-                    <div class="modal-body">
-                        本当に修正してもよろしいですか？
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                        <button type="button" class="btn btn-danger" id="confirmSubmit">はい、修正する</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="fixModalLabel">確定の確認</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
-                    </div>
-                    <div class="modal-body">
-                        確定するとデータの修正ができなくなります。<br>確定してもよろしいですか？
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                        <button type="button" class="btn btn-success" id="planFixConfirmBtn">はい、確定する</button>
+        <?php if ($isAdmin): ?>
+            <div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title" id="rejectModalLabel">差し戻し確認</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>この営業所のデータを <strong>Draft (下書き)</strong> 状態に戻します。</p>
+                            <p>担当者が再度修正できるようになりますが、よろしいですか？</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="button" class="btn btn-warning" id="planRejectConfirmBtn">はい、差し戻す</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            <div class="modal fade" id="parentFixModal" tabindex="-1" aria-labelledby="parentFixModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title" id="parentFixModalLabel">月次確定の確認</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>すべての営業所のデータが揃っています。</p>
+                            <p>この月を <strong>確定 (Fixed)</strong> してもよろしいですか？<br>
+                                確定すると、ロック解除するまでデータの変更は一切できなくなります。</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="button" class="btn btn-primary" id="planParentFixConfirmBtn">月次確定する</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="parentUnlockModal" tabindex="-1" aria-labelledby="parentUnlockModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-danger text-white">
+                            <h5 class="modal-title" id="parentUnlockModalLabel">ロック解除の確認</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>この月のロックを解除しますか？</p>
+                            <p>解除すると、各営業所のデータを個別に「差し戻し」できるようになります。</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="button" class="btn btn-danger" id="planParentUnlockConfirmBtn">ロック解除する</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="unfixedListModal" tabindex="-1" aria-labelledby="unfixedListModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-sm">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title fs-6" id="unfixedListModalLabel">未確定の営業所一覧</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            <ul id="unfixedOfficeList" class="list-group list-group-flush">
+                            </ul>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">閉じる</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        <?php else: ?>
+            <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="confirmModalLabel">修正の確認</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            本当に修正してもよろしいですか？
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="button" class="btn btn-danger" id="confirmSubmit">はい、修正する</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal fade" id="fixModal" tabindex="-1" aria-labelledby="fixModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="fixModalLabel">確定の確認</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                        </div>
+                        <div class="modal-body">
+                            確定するとデータの修正ができなくなります。<br>確定してもよろしいですか？
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                            <button type="button" class="btn btn-success" id="planFixConfirmBtn">はい、確定する</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
