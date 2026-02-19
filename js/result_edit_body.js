@@ -5,6 +5,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const userRole = document.body.getAttribute('data-user-role') || 'viewer';
     const isAdmin = (userRole === 'admin');
+    const isViewer = (userRole === 'viewer');
+
+    // ----------------------------------------------------------------
+    // DOM要素の取得
+    // ----------------------------------------------------------------
 
     // --- 営業所別入力要素 ---
     const officeSelect = document.getElementById('officeSelect');
@@ -22,8 +27,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Admin Controls
     const adminParentControls = document.getElementById('adminParentControls');
-    const btnParentFix = document.getElementById('resultParentFixConfirmBtn');
-    const btnParentUnlock = document.getElementById('resultParentUnlockConfirmBtn');
+    // 画面上のトリガーボタンのIDを正しく取得 (Confirmボタンではない)
+    const btnParentFix = document.getElementById('btnParentFix');
+    const btnParentUnlock = document.getElementById('btnParentUnlock');
     const parentFixedLabel = document.getElementById('parentFixedLabel');
     const unfixedBadge = document.getElementById('unfixedBadge');
     const unfixedCountSpan = document.getElementById('unfixedCount');
@@ -75,12 +81,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ----------------------------------------------------------------
-    // データ退避・復元機能
+    // データ退避・復元機能 (SessionStorage)
     // ----------------------------------------------------------------
     const BACKUP_KEY = 'result_edit_backup_data';
 
     function backupFormData() {
-        if (isAdmin) return;
+        if (isAdmin || isViewer) return; // AdminとViewerはバックアップ不要
 
         if (currentOfficeId && currentOfficeId !== 'all') {
             captureCurrentOfficeTime(currentOfficeId);
@@ -110,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function restoreFormData() {
-        if (isAdmin) return;
+        if (isAdmin || isViewer) return; // AdminとViewerは復元不要
 
         const json = sessionStorage.getItem(BACKUP_KEY);
         if (!json) return;
@@ -174,13 +180,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ----------------------------------------------------------------
-    // 変更検知
+    // 変更検知 (Dirty Check)
     // ----------------------------------------------------------------
     function getFormDataString() {
         if (currentOfficeId && currentOfficeId !== 'all') {
             captureCurrentOfficeTime(currentOfficeId);
         }
-
         const inputs = document.querySelectorAll('input, select, textarea');
         const data = {};
         const ignoreIds = [
@@ -208,6 +213,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const parentStatus = statusInput ? statusInput.value : '';
         const isAllSelected = (officeSelect && officeSelect.value === 'all');
 
+        if (isViewer) {
+            if (submitBtnUpdate) submitBtnUpdate.disabled = true;
+            if (submitBtnFixed) submitBtnFixed.disabled = true;
+            return;
+        }
+
         if (isAdmin) {
             document.querySelectorAll('input, select, textarea').forEach(el => {
                 if (el.type === 'hidden') return;
@@ -228,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     if (btnParentFix) {
                         btnParentFix.style.display = showParentBtns ? 'inline-block' : 'none';
+                        // 全ての営業所が確定済みで、かつデータが存在する場合のみ押せる
                         btnParentFix.disabled = !isAllFixedGlobal || !hasData;
                     }
                     if (btnParentUnlock) btnParentUnlock.style.display = 'none';
@@ -324,10 +336,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const rowOfficeId = row.getAttribute('data-office-id');
             const isMatch = (selectedOfficeId === 'all' || rowOfficeId === 'common' || rowOfficeId === selectedOfficeId);
 
+            // 入力欄の無効化（Admin、Viewer）
             if (isMatch) {
                 row.style.display = '';
                 const isGloballyDisabled = document.getElementById('standardHours').disabled;
-                const shouldDisable = isAdmin || (selectedOfficeId === 'all') || isGloballyDisabled;
+                const shouldDisable = isAdmin || isViewer || (selectedOfficeId === 'all') || isGloballyDisabled;
                 row.querySelectorAll('input').forEach(input => {
                     if (input.type !== 'hidden') input.disabled = shouldDisable;
                 });
@@ -376,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
             isChildFixed = true;
         }
 
-        const shouldDisable = isAdmin || lockedStatuses.includes(parentStatus) || isChildFixed;
+        const shouldDisable = isAdmin || isViewer || lockedStatuses.includes(parentStatus) || isChildFixed;
 
         if (oid === 'all') {
             let totals = { standard_hours: 0, overtime_hours: 0, transferred_hours: 0, fulltime_count: 0, contract_count: 0, dispatch_count: 0 };
@@ -555,7 +568,7 @@ document.addEventListener('DOMContentLoaded', function () {
         officeSelect.addEventListener('change', () => {
             if (!monthSelect.value) { alert("月を選択してください。"); officeSelect.value = currentOfficeId || 'all'; return; }
 
-            // ★修正: Adminでなければチェック
+            // Adminでなければチェック
             if (!isAdmin) {
                 if (initialFormData !== "") {
                     const currentFormData = getFormDataString();
@@ -574,12 +587,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!officeTimeDataLocal[currentOfficeId]) officeTimeDataLocal[currentOfficeId] = {};
                 officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
             }
-
             const errorAlert = getOrCreateErrorAlert(); if (errorAlert) errorAlert.innerHTML = '';
             const myOfficeData = officeTimeDataLocal[currentOfficeId];
             const hasParentData = document.getElementById('monthlyResultId') && document.getElementById('monthlyResultId').value;
 
-            // ★修正: Adminでも「その営業所のデータが無い」場合はアラートを出す (inputsはdisableしない)
+            // Adminでも「その営業所のデータが無い」場合はアラートを出す (inputsはdisableしない)
             if (currentOfficeId !== 'all' && hasParentData && !myOfficeData) {
                 if (errorAlert) {
                     errorAlert.innerHTML = `<div class="alert alert-warning d-flex align-items-center" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i><div><strong>データ未登録</strong><br>この営業所のデータはまだ登録されていません。</div></div>`;
@@ -698,7 +710,7 @@ document.addEventListener('DOMContentLoaded', function () {
             resetInputFields();
             currentOfficeId = officeSelect ? officeSelect.value : null;
 
-            // ★修正: 変数名を requestParams に変更して競合回避
+            // 変数名を requestParams に変更して競合回避
             const requestParams = new URLSearchParams(window.location.search);
 
             if (e.isTrusted) {
@@ -709,8 +721,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.error) throw new Error(data.error);
 
                 const errorAlert = getOrCreateErrorAlert();
-                if (errorAlert) { if (e.isTrusted || !requestParams.has('error')) { errorAlert.innerHTML = ''; errorAlert.className = ''; } }
-
+                if (errorAlert) {
+                    if (e.isTrusted || !requestParams.has('error')) { errorAlert.innerHTML = ''; errorAlert.className = ''; }
+                }
                 if (!data.monthly_result_id) {
                     if (errorAlert) errorAlert.innerHTML = `<div class="alert alert-secondary d-flex align-items-center" role="alert"><i class="bi bi-info-circle-fill me-2"></i><div><strong>この月はまだ登録されていません。</strong></div></div>`;
                     disableAllInputs(); return;
@@ -741,7 +754,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 const myOfficeData = officeTimeDataLocal[currentOfficeId];
 
-                // ★修正: 親データはあるが、自営業所のデータが無い場合
+                // 親データはあるが、自営業所のデータが無い場合
                 if (currentOfficeId !== 'all' && !myOfficeData) {
                     if (errorAlert) errorAlert.innerHTML = `<div class="alert alert-warning d-flex align-items-center" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i><div><strong>データ未登録</strong><br>この営業所のデータはまだ登録されていません。</div></div>`;
                     // Adminならdisableしない
@@ -769,7 +782,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 initDirtyCheck(); filterDetailsByOffice();
-                // ★修正: requestParamsを使用
+                // requestParamsを使用
                 if (requestParams.has('error') && !isAdmin) restoreFormData(); else if (requestParams.has('success')) clearBackup();
             }).catch(error => { console.error('データ読み込みエラー:', error); alert('データの読み込みに失敗しました。'); resetInputFields(); });
         });

@@ -11,6 +11,11 @@ $userContext = [
     'username'  => $_SESSION['username'] ?? 'unknown'
 ];
 
+// role = viewerなら強制終了
+if (($userContext['role'] ?? 'viewer') === 'viewer') {
+    die("エラー: 閲覧専用アカウント(Viewer)ではデータの更新・保存はできません。");
+}
+
 // 2. POSTデータ取得
 $actionType = $_POST['cpMode'] ?? 'update'; // update, fixed, reject, parent_fix, parent_unlock
 $year = (int)($_POST['year'] ?? 0);
@@ -84,7 +89,7 @@ try {
         if ($nextData) {
             // (1) Forecastが全社確定(fixed)されている場合 -> NG
             if ($nextData['status'] === 'fixed') {
-                throw new Exception("後続の「見通し(Forecast)」が既に全社確定されています。整合性を保つため、先に見通しのロックを解除してください。");
+                throw new Exception("後続の「見通し」が既に全社確定されています。整合性を保つため、先に「見通し」のロックを解除してください。");
             }
 
             // (2) Forecastの各営業所データ(子)にFixedが1つでも含まれる場合 -> NG
@@ -94,7 +99,7 @@ try {
             $fixedCount = $stmtCheckChild->fetchColumn();
 
             if ($fixedCount > 0) {
-                throw new Exception("後続の「見通し」において、既に確定済みの営業所が {$fixedCount} 件存在します。\n整合性を保つため、CPをUnlockする前に、「見通し」側でそれらの営業所を差し戻してください。");
+                throw new Exception("後続の「見通し」において、既に確定済みの営業所が {$fixedCount} 件存在します。\n整合性を保つため、「CP」をUnlockする前に、「見通し」側でそれらの営業所を差し戻してください。");
             }
         }
     }

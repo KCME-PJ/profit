@@ -9,6 +9,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $userRole = $_SESSION['role'] ?? 'viewer';
 $isAdmin = ($userRole === 'admin');
+// role = viewerなら強制終了
+if ($userRole === 'viewer') {
+    die("エラー: 閲覧専用アカウント(Viewer)ではデータの更新・保存はできません。");
+}
 
 $actionType = $_POST['action_type'] ?? 'update';
 $year = (int)($_POST['year'] ?? 0);
@@ -46,7 +50,7 @@ try {
             if ($nextData) {
                 // (1) Planが全社確定(fixed)されている場合 -> NG
                 if ($nextData['status'] === 'fixed') {
-                    throw new Exception("後続の「予定(Plan)」が既に全社確定されています。整合性を保つため、先に予定のロックを解除してください。");
+                    throw new Exception("後続の「予定」が既に全社確定されています。整合性を保つため、先に「予定」のロックを解除してください。");
                 }
 
                 // (2) Planの各営業所データ(子)にFixedが1つでも含まれる場合 -> NG
@@ -55,7 +59,7 @@ try {
                 $fixedCount = $stmtCheckChild->fetchColumn();
 
                 if ($fixedCount > 0) {
-                    throw new Exception("後続の「予定(Plan)」において、既に確定(Fixed)済みの営業所が {$fixedCount} 件存在します。\n整合性を保つため、Forecastを解除する前に、Plan側でそれらの営業所を差し戻してください。");
+                    throw new Exception("後続の「予定」において、既に確定済みの営業所が {$fixedCount} 件存在します。\n整合性を保つため、「見通し」を解除する前に、「予定」側でそれらの営業所を差し戻してください。");
                 }
             }
         }
@@ -79,7 +83,7 @@ try {
                 $planOfficeStatus = $stmtPlanOffice->fetchColumn();
 
                 if ($planOfficeStatus === 'fixed') {
-                    throw new Exception("この営業所の「予定(Plan)」データが既に確定されています。整合性を保つため、先に予定側の該当営業所を差し戻し(修正状態に)してください。");
+                    throw new Exception("この営業所の「予定」データが既に確定されています。整合性を保つため、先に予定側の該当営業所を差し戻し(修正状態に)してください。");
                 } elseif ($planOfficeStatus === 'draft') {
                     // planがDraftなら、Forecast差し戻しと同時に「Plan」を削除する
                     // Plan Time削除
@@ -114,7 +118,7 @@ try {
         if ($actionType === 'parent_fix') {
             // 親ステータスを fixed にし、Planへ反映
             fixParentForecast((int)$monthlyForecastId, $dbh);
-            $msg = "{$year}年{$month}月を確定(Fixed)し、予定(Plan)へ反映しました。";
+            $msg = "{$year}年{$month}月を確定し、予定へ反映しました。";
         } elseif ($actionType === 'parent_unlock') {
             // 親ステータスを draft に (ロック解除)
             unlockParentForecast((int)$monthlyForecastId, $dbh);

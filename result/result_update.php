@@ -9,6 +9,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $userRole = $_SESSION['role'] ?? 'viewer';
 $isAdmin = ($userRole === 'admin');
+// role = viewerなら強制終了
+if ($userRole === 'viewer') {
+    die("エラー: 閲覧専用アカウント(Viewer)ではデータの更新・保存はできません。");
+}
 
 $actionType = $_POST['action_type'] ?? 'update';
 $year = (int)($_POST['year'] ?? 0);

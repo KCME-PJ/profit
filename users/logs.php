@@ -194,7 +194,7 @@ $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
                                     <td class="text-center">
                                         <?php if (
-                                            in_array($log['phase'], ['forecast', 'cp']) &&
+                                            in_array($log['phase'], ['cp', 'forecast', 'plan', 'outlook', 'result']) &&
                                             $log['action'] === 'update' &&
                                             !empty($contentData['officeTimeData'])
                                         ): ?>

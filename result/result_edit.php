@@ -356,10 +356,10 @@ $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
                     </button>
 
                     <div id="adminParentControls" style="display:none;" class="d-inline-flex align-items-center gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="resultParentFixConfirmBtn" disabled data-bs-toggle="modal" data-bs-target="#parentFixModal">
+                        <button type="button" class="btn btn-primary btn-sm" id="btnParentFix" disabled data-bs-toggle="modal" data-bs-target="#parentFixModal">
                             <i class="bi bi-check2-all"></i> 月次確定 (Parent Fix)
                         </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" id="resultParentUnlockConfirmBtn" style="display:none;" data-bs-toggle="modal" data-bs-target="#parentUnlockModal">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnParentUnlock" style="display:none;" data-bs-toggle="modal" data-bs-target="#parentUnlockModal">
                             <i class="bi bi-unlock-fill"></i> ロック解除 (Unlock)
                         </button>
                         <span id="parentFixedLabel" class="badge bg-success" style="display:none;">

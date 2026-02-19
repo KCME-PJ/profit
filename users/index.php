@@ -78,7 +78,7 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>権限</th>
                             <th>所属営業所</th>
                             <th>状態</th>
-                            <th>操作</th>
+                            <th style="width: 280px;">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -110,18 +110,26 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="edit.php?id=<?php echo $u['id']; ?>" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-pencil"></i> 編集
-                                    </a>
-                                    <?php if ($u['id'] != $_SESSION['user_id']): ?>
-                                        <?php if ($u['is_active']): ?>
-                                            <a href="delete.php?id=<?php echo $u['id']; ?>"
-                                                class="btn btn-sm btn-outline-danger ms-1"
-                                                onclick="return confirm('このユーザーを無効化しますか？');">
-                                                <i class="bi bi-ban"></i> 無効化
-                                            </a>
+                                    <div class="d-flex gap-2">
+                                        <a href="edit.php?id=<?php echo $u['id']; ?>" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-pencil"></i> 編集
+                                        </a>
+
+                                        <?php if ($u['id'] != $_SESSION['user_id']): ?>
+                                            <?php if ($u['is_active']): ?>
+                                                <button type="button" class="btn btn-sm btn-outline-warning text-dark"
+                                                    onclick="confirmReset(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars($u['username'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($u['last_name'] . ' ' . $u['first_name'], ENT_QUOTES); ?>')">
+                                                    <i class="bi bi-key"></i> PW初期化
+                                                </button>
+
+                                                <a href="delete.php?id=<?php echo $u['id']; ?>"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    onclick="return confirm('このユーザーを無効化しますか？');">
+                                                    <i class="bi bi-ban"></i> 無効化
+                                                </a>
+                                            <?php endif; ?>
                                         <?php endif; ?>
-                                    <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -130,7 +138,29 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
     </div>
+
+    <form id="resetForm" action="reset_password.php" method="POST" style="display:none;">
+        <input type="hidden" name="id" id="resetUserId">
+    </form>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function confirmReset(id, username, name) {
+            // username(社員番号)の下6桁を取得
+            let defaultPass = username;
+            if (username.length > 6) {
+                defaultPass = username.slice(-6);
+            }
+
+            const msg = '【確認】\n' + name + ' (' + username + ') さんのパスワードを初期化しますか？\n\n' +
+                '初期パスワードは社員番号の下6桁 [' + defaultPass + '] に設定されます。';
+
+            if (confirm(msg)) {
+                document.getElementById('resetUserId').value = id;
+                document.getElementById('resetForm').submit();
+            }
+        }
+    </script>
 </body>
 
 </html>

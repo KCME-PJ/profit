@@ -9,6 +9,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $userRole = $_SESSION['role'] ?? 'viewer';
 $isAdmin = ($userRole === 'admin');
+// role = viewerなら強制終了
+if ($userRole === 'viewer') {
+    die("エラー: 閲覧専用アカウント(Viewer)ではデータの更新・保存はできません。");
+}
 
 $actionType = $_POST['action_type'] ?? 'update';
 $year = (int)($_POST['year'] ?? 0);
@@ -31,19 +35,98 @@ try {
             throw new Exception("対象データが見つかりません。");
         }
 
+        // ============================================================
+        // 依存関係チェック (Dependency Check) - 厳格版
+        // Outlook操作時に、後続の Result が確定済みでないか厳密に確認する
+        // ============================================================
+
+        // A. 親レベルのチェック (ロック解除時)
+        if ($actionType === 'parent_unlock') {
+            // 1. Resultの親データを取得
+            $stmtCheckNext = $dbh->prepare("SELECT id, status FROM monthly_result WHERE year = ? AND month = ? LIMIT 1");
+            $stmtCheckNext->execute([$year, $month]);
+            $nextData = $stmtCheckNext->fetch(PDO::FETCH_ASSOC);
+
+            if ($nextData) {
+                // (1) Resultが全社確定(fixed)されている場合 -> NG
+                if ($nextData['status'] === 'fixed') {
+                    throw new Exception("後続の「概算実績」が既に全社確定されています。整合性を保つため、先に「概算実績」のロックを解除してください。");
+                }
+
+                // (2) Resultの各営業所データ(子)にFixedが1つでも含まれる場合 -> NG
+                $stmtCheckChild = $dbh->prepare("SELECT COUNT(*) FROM monthly_result_time WHERE monthly_result_id = ? AND status = 'fixed'");
+                $stmtCheckChild->execute([$nextData['id']]);
+                $fixedCount = $stmtCheckChild->fetchColumn();
+
+                if ($fixedCount > 0) {
+                    throw new Exception("後続の「概算実績」において、既に確定済みの営業所が {$fixedCount} 件存在します。\n整合性を保つため、「月末見込み」を解除する前に、「概算実績」側でそれらの営業所を差し戻してください。");
+                }
+            }
+        }
+
+        // B. 営業所レベルのチェック (差し戻し時)
+        if ($actionType === 'reject') {
+            $targetOfficeId = $_POST['target_office_id'] ?? null;
+            if (!$targetOfficeId) {
+                throw new Exception("差し戻し対象の営業所が指定されていません。");
+            }
+
+            // 1. Resultの親IDを取得
+            $stmtResultId = $dbh->prepare("SELECT id FROM monthly_result WHERE year = ? AND month = ? LIMIT 1");
+            $stmtResultId->execute([$year, $month]);
+            $resultId = $stmtResultId->fetchColumn();
+
+            if ($resultId) {
+                // 2. その営業所のステータスを確認
+                $stmtResultOffice = $dbh->prepare("SELECT status FROM monthly_result_time WHERE monthly_result_id = ? AND office_id = ?");
+                $stmtResultOffice->execute([$resultId, $targetOfficeId]);
+                $resultOfficeStatus = $stmtResultOffice->fetchColumn();
+
+                if ($resultOfficeStatus === 'fixed') {
+                    throw new Exception("この営業所の「概算実績」データが既に確定されています。整合性を保つため、先に実績側の該当営業所を差し戻し(修正状態に)してください。");
+                } elseif ($resultOfficeStatus === 'draft') {
+                    // ResultがDraftなら、Outlook差し戻しと同時に「Result」を削除する
+                    // Result Time削除
+                    $dbh->prepare("DELETE FROM monthly_result_time WHERE monthly_result_id = ? AND office_id = ?")
+                        ->execute([$resultId, $targetOfficeId]);
+
+                    // Result Details削除
+                    $dbh->prepare("DELETE rd FROM monthly_result_details rd INNER JOIN details d ON rd.detail_id = d.id WHERE rd.result_id = ? AND d.office_id = ?")
+                        ->execute([$resultId, $targetOfficeId]);
+
+                    // Result Revenues削除
+                    $dbh->prepare("DELETE rr FROM monthly_result_revenues rr INNER JOIN revenue_items r ON rr.revenue_item_id = r.id WHERE rr.result_id = ? AND r.office_id = ?")
+                        ->execute([$resultId, $targetOfficeId]);
+
+                    // もし今回の削除で「子データ(Time)」が1件もなくなったら、「親データ(monthly_result)」自体を削除する
+                    $stmtCount = $dbh->prepare("SELECT COUNT(*) FROM monthly_result_time WHERE monthly_result_id = ?");
+                    $stmtCount->execute([$resultId]);
+                    if ($stmtCount->fetchColumn() == 0) {
+
+                        // 親レコードを削除
+                        $dbh->prepare("DELETE FROM monthly_result WHERE id = ?")->execute([$resultId]);
+                    }
+                }
+            }
+        }
+
+        // ============================================================
+        // アクション実行 (関数呼び出し)
+        // ※ログ記録は各関数内で行うため、ここでは記述しない
+        // ============================================================
+
         if ($actionType === 'parent_fix') {
-            // 親ステータスを fixed にし、Result(概算実績)へ反映
+            // 親ステータスを fixed にし、Resultへ反映
             fixParentOutlook((int)$monthlyOutlookId, $dbh);
-            $msg = "{$year}年{$month}月を確定(Fixed)し、概算実績(Result)へ反映しました。";
+            $msg = "{$year}年{$month}月を確定し、概算実績へ反映しました。";
         } elseif ($actionType === 'parent_unlock') {
             // 親ステータスを draft に (ロック解除)
             unlockParentOutlook((int)$monthlyOutlookId, $dbh);
             $msg = "{$year}年{$month}月のロックを解除しました。";
         } elseif ($actionType === 'reject') {
             // 指定した営業所のデータを差し戻し
-            $targetOfficeId = $_POST['target_office_id'] ?? null;
-            if (!$targetOfficeId) {
-                throw new Exception("差し戻し対象の営業所が指定されていません。");
+            if (empty($targetOfficeId)) {
+                $targetOfficeId = $_POST['target_office_id'] ?? null;
             }
             rejectMonthlyOutlook((int)$monthlyOutlookId, (int)$targetOfficeId, $dbh);
             $msg = "指定した営業所のデータを差し戻しました。";

@@ -3,7 +3,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const monthSelect = document.getElementById('monthSelect');
     const officeSelect = document.getElementById('officeSelect');
     const monthButtonsContainer = document.getElementById('monthButtonsContainer');
-
     const yearMonthData = window.yearMonthData || {};
     let currentYearStatuses = {};
 
@@ -37,22 +36,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateCpStatusButtons(year) {
-        monthButtonsContainer.innerHTML = '';
-        const startMonth = 4;
-
-        // プレースホルダー生成
-        for (let i = 0; i < 12; i++) {
-            const month = ((startMonth + i - 1) % 12) + 1;
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.id = `monthBtn${month}`;
-            btn.className = 'btn btn-secondary btn-sm me-1 mb-1 month-btn';
-            btn.textContent = `${month}月`;
-            btn.dataset.month = month;
-            // 初期状態は有効にしておく（色はグレー）
-            // btn.disabled = true; 
-            monthButtonsContainer.appendChild(btn);
-        }
 
         if (!year) return;
 
@@ -70,12 +53,13 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(statusList => {
                 currentYearStatuses = statusList;
 
-                const buttons = monthButtonsContainer.querySelectorAll('button');
+                const buttons = monthButtonsContainer.querySelectorAll('.month-btn');
                 buttons.forEach(btn => {
+                    // data-month属性から月を取得（Forecastより安全な方法なので維持）
                     const month = parseInt(btn.dataset.month, 10);
                     const status = statusList[month] || 'none';
 
-                    // クラスリセット (month-btn を維持)
+                    // クラスリセット (Forecastに合わせて me-1 のままでOK)
                     btn.className = 'btn btn-sm me-1 mb-1 month-btn';
 
                     if (status === 'fixed') {
@@ -93,27 +77,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     } else {
                         // データなし（グレー）
                     }
-
-                    // クリックイベント再設定
-                    btn.addEventListener('click', function () {
-                        // プルダウンにない月（未登録月）でも選択できるようにする処理
-                        let optionExists = false;
-                        for (let i = 0; i < monthSelect.options.length; i++) {
-                            if (monthSelect.options[i].value == month) {
-                                optionExists = true;
-                                break;
-                            }
-                        }
-                        if (!optionExists) {
-                            const opt = document.createElement('option');
-                            opt.value = month;
-                            opt.text = month + '月';
-                            monthSelect.add(opt);
-                        }
-
-                        monthSelect.value = month;
-                        monthSelect.dispatchEvent(new Event('change'));
-                    });
                 });
             })
             .catch(err => {
@@ -155,6 +118,45 @@ document.addEventListener('DOMContentLoaded', function () {
         if (initialMonth) {
             monthSelect.value = initialMonth;
         }
+    }
+
+    // ---------------------------------------------
+    // --- 月ボタンクリック時の処理 (イベント委譲) ---
+    // ---------------------------------------------
+    // 親要素でまとめてイベントを受け取る（Forecastと同様の構成）
+    if (monthButtonsContainer) {
+        monthButtonsContainer.addEventListener('click', function (e) {
+            // クリックされた要素が月ボタンかどうか判定
+            if (e.target.tagName === 'BUTTON' && e.target.classList.contains('month-btn')) {
+                const btn = e.target;
+                const month = parseInt(btn.dataset.month, 10);
+
+                if (!isNaN(month) && monthSelect) {
+                    // プルダウンにない月（未登録）の場合の追加処理
+                    // ※CPでは未登録月でも選択して新規作成(Draft)できるようにするため必須
+                    let optionExists = false;
+                    for (let i = 0; i < monthSelect.options.length; i++) {
+                        if (parseInt(monthSelect.options[i].value) === month) {
+                            optionExists = true;
+                            monthSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    if (!optionExists) {
+                        const opt = document.createElement('option');
+                        opt.value = month;
+                        opt.text = month + '月';
+                        monthSelect.add(opt);
+                        monthSelect.value = month;
+                    } else {
+                        monthSelect.value = month;
+                    }
+
+                    // changeイベントを発火させて詳細データを読み込む
+                    monthSelect.dispatchEvent(new Event('change'));
+                }
+            }
+        });
     }
 
     const exportButtons = document.querySelectorAll('[data-export-type]');
