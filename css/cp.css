@@ -14,7 +14,7 @@
             padding: 15px;
             margin-bottom: 15px;
             position: relative;
-            /* 相対位置を指定 */
+            border: 1px solid #dee2e6;
         }
 
         /* 上部入力フォーム内のボタン位置指定 */

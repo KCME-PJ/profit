@@ -290,13 +290,11 @@ try {
         <form id="cpForm" action="process_cp.php" method="POST">
             <div class="row mb-3">
                 <div class="col-md-2">
-                    <h4>CP 計画入力</h4>
+                    <h4 class="mb-2">CP 計画入力</h4>
                 </div>
                 <div class="col-md-10">
-                    <label>各月の状況：
-                        <span class="text-secondary">未登録</span>,
-                        <span class="text-primary">登録済</span>,
-                        <span class="text-success">確定済</span>
+                    <label class="form-label mb-1">
+                        各月の状況：<span class="text-secondary">未登録</span>、<span class="text-primary">登録済</span>、<span class="text-success">確定済</span>
                     </label><br>
                     <?php
                     $startMonth = 4;
@@ -310,7 +308,7 @@ try {
                 </div>
             </div>
 
-            <div class="info-box p-3 border mb-3">
+            <div class="info-box">
                 <div class="row align-items-end mb-2">
                     <div class="col-md-2">
                         <label>年度</label>
