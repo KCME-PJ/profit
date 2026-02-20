@@ -110,7 +110,12 @@ if ($isManager && !empty($_SESSION['office_id'])) {
     $stmt = $dbh->query("SELECT * FROM offices ORDER BY identifier ASC");
 }
 $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-$selectedOffice = $offices[0]['id'] ?? 0;
+$selectedOffice = 'all';
+
+// Manager（営業所長）の場合は自分の営業所を初期値にする
+if ($isManager && !empty($_SESSION['office_id'])) {
+    $selectedOffice = (int)$_SESSION['office_id'];
+}
 
 // デフォルト年度
 $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
@@ -296,7 +301,7 @@ $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : null;
                     <div class="col-md-2">
                         <label>営業所</label>
                         <select id="officeSelect" class="form-select form-select-sm">
-                            <option value="all">全社 (閲覧のみ)</option>
+                            <option value="all" <?= $selectedOffice === 'all' ? 'selected' : '' ?>>全社 (閲覧のみ)</option>
                             <?php foreach ($offices as $office): ?>
                                 <option value="<?= $office['id'] ?>" <?= $office['id'] == $selectedOffice ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($office['identifier'] . ' : ' . $office['name']) ?>
