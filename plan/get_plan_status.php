@@ -19,11 +19,14 @@ $requestOfficeId = isset($_GET['office_id']) ? $_GET['office_id'] : null;
 // 判定に使うターゲット営業所IDを決定
 $targetOfficeId = null;
 
-if ($requestOfficeId && $requestOfficeId !== 'all' && $requestOfficeId != 0) {
-    // 明示的に指定された場合
+if ($requestOfficeId === 'all' || $requestOfficeId === '0') {
+    // 明示的に全社が指定された場合は、権限に関わらず全社（null）として扱う
+    $targetOfficeId = null;
+} elseif ($requestOfficeId !== null) {
+    // 明示的に特定の営業所が指定された場合
     $targetOfficeId = (int)$requestOfficeId;
 } elseif ($userRole === 'manager' && $userOfficeId) {
-    // Managerなら自分の営業所
+    // 指定がない（初期ロードなど）場合で、Managerなら自分の営業所
     $targetOfficeId = (int)$userOfficeId;
 }
 

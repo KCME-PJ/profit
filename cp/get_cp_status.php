@@ -9,13 +9,22 @@ header('Content-Type: application/json; charset=utf-8');
 
 try {
     $year = (int)($_GET['year'] ?? 0);
+    $userRole = $_SESSION['role'] ?? 'viewer';
+    $userOfficeId = $_SESSION['office_id'] ?? null;
+    $requestOfficeId = isset($_GET['office_id']) ? $_GET['office_id'] : null;
 
     // 対象営業所IDの決定
     $targetOfficeId = 0;
-    if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager') {
-        $targetOfficeId = (int)($_SESSION['office_id'] ?? 0);
-    } else {
-        $targetOfficeId = (int)($_GET['office_id'] ?? 0);
+
+    if ($requestOfficeId === 'all' || $requestOfficeId === '0') {
+        // 明示的に全社が指定された場合は、権限に関わらず全社（0）として扱う
+        $targetOfficeId = 0;
+    } elseif ($requestOfficeId !== null) {
+        // 明示的に特定の営業所が指定された場合
+        $targetOfficeId = (int)$requestOfficeId;
+    } elseif ($userRole === 'manager' && $userOfficeId) {
+        // 指定がない（初期ロードなど）場合で、Managerなら自分の営業所
+        $targetOfficeId = (int)$userOfficeId;
     }
 
     // パラメータチェック (修正: targetOfficeId <= 0 のチェックを外す)
