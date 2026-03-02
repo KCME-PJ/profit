@@ -1,75 +1,118 @@
-.scroll-table {
-    max-height: 600px;
-    overflow-y: auto;
-    position: relative;
-}
+/* Google Fonts Import */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th,
-td {
-    border: 1px solid #dee2e6;
-    padding: 4px 6px;
-    text-align: center;
-}
-
-thead th {
-    position: sticky;
-    top: 0;
-    background-color: #e9f1ff;
-    z-index: 2;
-}
-
-tbody tr:nth-child(even) {
+/* 基本スタイル */
+body {
+    font-family: 'Montserrat', sans-serif;
     background-color: #f8f9fa;
 }
 
-.text-start {
-    text-align: left;
+/* サイドバー関連 */
+#sidebar-wrapper {
+    min-height: 100vh;
+    margin-left: -15rem;
+    transition: margin .25s ease-out;
+    background-color: #343a40;
 }
 
-.table-info {
-    background-color: #d1ecf1;
+#sidebar-wrapper .sidebar-heading {
+    padding: 0.875rem 1.25rem;
+    font-size: 1.2rem;
+    color: #fff;
+    background-color: #212529;
 }
 
-.table-success {
-    background-color: #d4edda;
+#sidebar-wrapper .list-group {
+    width: 15rem;
 }
 
-.table-warning {
-    background-color: #fff3cd;
-    color: #212529;
+#page-content-wrapper {
+    min-width: 100vw;
 }
 
-.fw-bold {
-    font-weight: bold;
+body.sb-sidenav-toggled #sidebar-wrapper {
+    margin-left: 0;
 }
 
-.small-text {
-    font-size: 0.85em;
-    color: #555;
+@media (min-width: 768px) {
+    #sidebar-wrapper {
+        margin-left: 0;
+    }
+
+    #page-content-wrapper {
+        min-width: 0;
+        width: 100%;
+    }
+
+    body.sb-sidenav-toggled #sidebar-wrapper {
+        margin-left: -15rem;
+    }
 }
 
-/* chart.jsレスポンシブ対応 */
-.graph {
-    width: 100%;
-    height: 0;
-    padding-top: 50%;
-    position: relative;
+.sidebar-link {
+    background-color: #343a40;
+    color: #adb5bd;
+    border: none;
 }
 
-.graph canvas#myChart {
-    width: 100%;
+.sidebar-link:hover {
+    background-color: #495057;
+    color: #fff;
+}
+
+.sidebar-link.active {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+/* カード・ダッシュボード要素 */
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.summary-box {
+    padding: 15px;
+    border-radius: 10px;
+    color: white;
+    margin-bottom: 15px;
+}
+
+.summary-box-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e3e6f0;
+    border-left-width: 5px !important;
+    /* 左側だけ線を太くする */
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05);
+    padding: 15px;
     height: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
 }
 
-/* テキストボックス幅調整 */
-.text_w {
-    width: 95px;
+/* チャート容器 */
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* 実績累計セクションの枠スタイル --- */
+.result-summary-container {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    /* 他のカードと同じ細い線 */
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.summary-frame-title {
+    font-weight: bold;
+    color: #495057;
+    /* 青から落ち着いたダークグレーに変更 */
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
