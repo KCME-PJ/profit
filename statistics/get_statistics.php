@@ -417,6 +417,7 @@ try {
         'preTaxProfit' => ['value' => 0, 'diff' => null],
     ];
     $kpiCompare = ['revenueTotal' => 0, 'expenseTotal' => 0, 'grossProfit' => 0, 'totalHours' => 0, 'preTaxProfit' => 0];
+    $targetMonth = null;
 
     foreach ([4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as $m) {
         if ($d = $baseMonthlyData[$m] ?? null) {
@@ -425,6 +426,7 @@ try {
             $kpi['grossProfit']['value']  += $d['grandTotal'];
             $kpi['totalHours']['value']   += $d['totalHours'];
             $kpi['preTaxProfit']['value'] += $d['preTaxProfit'];
+            $targetMonth = $m;
         }
         if ($d = $compareMonthlyData[$m] ?? null) {
             $kpiCompare['revenueTotal'] += $d['revenueTotal'];
@@ -434,6 +436,7 @@ try {
             $kpiCompare['preTaxProfit'] += $d['preTaxProfit'];
         }
     }
+    $kpi['target_month'] = $targetMonth;
     if ($kpi['totalHours']['value'] > 0) {
         $kpi['hourlyProfit']['value'] = $kpi['grossProfit']['value'] / $kpi['totalHours']['value'];
     }
@@ -443,8 +446,11 @@ try {
     }
     if ($compareType !== 'none') {
         foreach (array_keys($kpi) as $k) {
+            if ($k === 'target_month') {
+                continue;
+            }
             $b = $kpi[$k]['value'];
-            $c = ($k === 'hourlyProfit') ? $compHourly : $kpiCompare[$k];
+            $c = ($k === 'hourlyProfit') ? $compHourly : ($kpiCompare[$k] ?? 0);
             if ($c != 0) $kpi[$k]['diff'] = ($b - $c) / abs($c);
         }
     }

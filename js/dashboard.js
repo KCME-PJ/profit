@@ -178,6 +178,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // --- KPI ---
     function updateKpiCards(kpi, filters) {
+        const periodLabel = document.getElementById('period-label');
+        if (periodLabel) {
+            if (kpi.target_month) {
+                periodLabel.textContent = `（4月～${kpi.target_month}月）`;
+            } else {
+                periodLabel.textContent = `（集計期間）`;
+            }
+        }
         const setKpi = (id, text, diff) => {
             const elVal = document.getElementById(id);
             const elDiff = document.getElementById(id + '-diff');
