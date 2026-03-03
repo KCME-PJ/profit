@@ -26,20 +26,15 @@ $current_role = $isLoggedIn ? ($_SESSION['role'] ?? 'viewer') : '';
 <body>
     <nav class="navbar navbar-expand-lg bg-primary p-0" data-bs-theme="dark">
         <div class="container-fluid">
-            <div class="dropdown">
-                <a class="navbar-brand dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                    採算表
-                </a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item active" href="./index.html"><i
-                                class="bi bi-speedometer2 me-2"></i>ダッシュボード</a></li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li><a class="dropdown-item" href="./analysis.php"><i class="bi bi-table me-2"></i>詳細集計</a></li>
-                </ul>
-            </div>
+            <a class="navbar-brand dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">採算表</a>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item active" href="./index.php"><i class="bi bi-speedometer2 me-2"></i>ダッシュボード</a></li>
+                <li>
+                    <hr class="dropdown-divider">
+                </li>
+                <li><a class="dropdown-item" href="./analysis.php"><i class="bi bi-table me-2"></i>詳細集計</a></li>
+            </ul>
+
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
                 aria-label="Toggle navigation">
@@ -48,63 +43,44 @@ $current_role = $isLoggedIn ? ($_SESSION['role'] ?? 'viewer') : '';
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            CP
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">CP</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./cp/cp.php">CP計画</a></li>
                             <li><a class="dropdown-item" href="./cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            見通し
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">見通し</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            予定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">予定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            月末見込み
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">月末見込み</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            概算
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">概算</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="./result/result_edit.php">概算実績編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            勘定科目設定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">マスター設定</a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="./account/account.php">勘定科目登録</a></li>
                             <li><a class="dropdown-item" href="./account/account_list.php">勘定科目リスト</a></li>
-                            <li><a class="dropdown-item" href="./details/detail.php">詳細登録</a></li>
-                            <li><a class="dropdown-item" href="./details/detail_list.php">詳細リスト</a></li>
-                            <li><a class="dropdown-item" href="./offices/office.php">係登録</a></li>
+                            <li><a class="dropdown-item" href="./details/detail_list.php">勘定科目詳細リスト</a></li>
                             <li><a class="dropdown-item" href="./offices/office_list.php">係リスト</a></li>
+                            <li><a class="dropdown-item" href="./revenue/revenue_category_list.php">収入カテゴリリスト</a></li>
+                            <li><a class="dropdown-item" href="./revenue/revenue_item_list.php">収入項目リスト</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
@@ -113,25 +89,24 @@ $current_role = $isLoggedIn ? ($_SESSION['role'] ?? 'viewer') : '';
                     </li>
                 </ul>
             </div>
+
             <div class="navbar-nav ms-auto">
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <?php if ($isLoggedIn): ?>
-                                <i class="bi bi-person-check-fill text-success"></i>&nbsp; <?= htmlspecialchars($current_name, ENT_QUOTES, 'UTF-8') ?> さん
-                            <?php else: ?>
-                                <i class="bi bi-box-arrow-in-right"></i>&nbsp; ログイン / ログアウト
-                            <?php endif; ?>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <?php if ($isLoggedIn): ?>
-                                <li><a class="dropdown-item text-danger" href="./logout.php"><i class="bi bi-box-arrow-right me-2"></i>ログアウト</a></li>
-                            <?php else: ?>
-                                <li><a class="dropdown-item" href="./login.php"><i class="bi bi-box-arrow-in-right me-2"></i>ログイン</a></li>
-                            <?php endif; ?>
-                        </ul>
-                    </li>
-                </ul>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                        <?php if ($isLoggedIn): ?>
+                            <i class="bi bi-person-check-fill text-success"></i>&nbsp; <?= htmlspecialchars($current_name, ENT_QUOTES, 'UTF-8') ?> さん
+                        <?php else: ?>
+                            <i class="bi bi-box-arrow-in-right"></i>&nbsp; ログイン / ログアウト
+                        <?php endif; ?>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <?php if ($isLoggedIn): ?>
+                            <li><a class="dropdown-item text-danger" href="./logout.php"><i class="bi bi-box-arrow-right me-2"></i>ログアウト</a></li>
+                        <?php else: ?>
+                            <li><a class="dropdown-item" href="./login.php"><i class="bi bi-box-arrow-in-right me-2"></i>ログイン</a></li>
+                        <?php endif; ?>
+                    </ul>
+                </li>
             </div>
         </div>
     </nav>
