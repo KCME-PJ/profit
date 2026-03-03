@@ -1,6 +1,7 @@
 <?php
 session_start();
-// エラーメッセージ等のセッション変数を取得・クリア
+require_once '../includes/auth_check.php';
+
 $error = $_SESSION['error'] ?? null;
 $success = $_SESSION['success'] ?? null;
 unset($_SESSION['error'], $_SESSION['success']);
@@ -9,13 +10,9 @@ require_once '../includes/database.php';
 
 try {
     $dbh = getDb();
-
-    // 営業所データを取得
     $stmt = $dbh->query('SELECT * FROM offices ORDER BY identifier ASC');
     $offices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    // エラー時はセッションにセットしてリダイレクト等を検討
-    // ここでは簡易的にメッセージを表示して終了しないように注意
     $error = '営業所データの取得に失敗しました: ' . $e->getMessage();
     $offices = [];
 }
@@ -27,12 +24,11 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>係一覧</title>
+    <title>係一覧 - Profit index</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
 </head>
 
@@ -48,59 +44,48 @@ try {
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">CP
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">CP</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
                             <li><a class="dropdown-item" href="../cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">見通し
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">見通し</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">予定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">予定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">月末見込み
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">月末見込み</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">概算
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">概算</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            勘定科目設定
-                        </a>
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown">マスター設定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
                             <li><a class="dropdown-item" href="../details/detail_list.php">詳細</a></li>
+                            <li><a class="dropdown-item" href="../revenue/revenue_category_list.php">収入カテゴリ</a></li>
+                            <li><a class="dropdown-item" href="../revenue/revenue_item_list.php">収入項目</a></li>
                             <li><a class="dropdown-item" href="./office.php">係登録</a></li>
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
-                            <li><a class="dropdown-item" href="#">Something else here</a></li>
+                            <li><a class="dropdown-item" href="../users/">ユーザー管理</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -108,13 +93,12 @@ try {
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>&nbsp;
-                            user name さん
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Logout</a></li>
+                            <li><a class="dropdown-item" href="../profile/password_edit.php">パスワード変更</a></li>
+                            <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -122,7 +106,6 @@ try {
         </div>
     </nav>
     <div class="container mt-4">
-        <h4 class="mb-4">係リスト</h4>
 
         <?php if ($success): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -138,14 +121,24 @@ try {
             </div>
         <?php endif; ?>
 
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">係リスト</h4>
+            <div>
+                <a href="office.php" class="btn btn-primary btn-sm me-2"><i class="bi bi-plus-lg"></i> 新規登録</a>
+                <button id="resetStateBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-counterclockwise"></i> 初期状態に戻す
+                </button>
+            </div>
+        </div>
+
         <table id="officeTable" class="table table-striped table-bordered">
-            <thead>
+            <thead class="table-light">
                 <tr>
                     <th>ID</th>
                     <th>係名</th>
                     <th>コード</th>
                     <th>説明</th>
-                    <th>操作</th>
+                    <th style="width: 120px;">操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -159,13 +152,11 @@ try {
                             <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editModal-<?= $office['id'] ?>">
                                 修正
                             </button>
-
-                            <form action="delete_office.php" method="POST" style="display: inline;">
-                                <input type="hidden" name="id" value="<?= $office['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('<?= htmlspecialchars($office['name']) ?> を本当に削除して良いですか?');">
-                                    削除
-                                </button>
-                            </form>
+                            <button class="btn btn-sm btn-danger" data-bs-toggle="modal"
+                                data-bs-target="#deleteModal" data-id="<?= htmlspecialchars($office['id']) ?>"
+                                data-name="<?= htmlspecialchars($office['name']) ?>">
+                                削除
+                            </button>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -214,32 +205,73 @@ try {
         </div>
     <?php endforeach; ?>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
-        crossorigin="anonymous"></script>
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="delete_office.php" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="deleteModalLabel">削除確認</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="id" id="deleteOfficeId" value="">
+                        本当に <span id="deleteOfficeName" class="fw-bold"></span> を削除してもよろしいですか？
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                        <button type="submit" class="btn btn-danger">はい</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
 
     <script>
         $(document).ready(function() {
-            $('#officeTable').DataTable({
-                // 日本語化
+            var table = $('#officeTable').DataTable({
                 language: {
                     url: "https://cdn.datatables.net/plug-ins/1.13.4/i18n/ja.json"
                 },
-                // 表示件数設定
                 lengthMenu: [
                     [10, 25, 50, -1],
                     [10, 25, 50, "全件"]
                 ],
-                // 初期ソート: ID順
                 order: [
                     [0, "asc"]
-                ]
+                ],
+                stateSave: true,
+            });
+
+            // 初期状態に戻すボタン
+            $('#resetStateBtn').on('click', function() {
+                table.state.clear();
+                table.search('').columns().search('');
+                table.order([
+                    [0, "asc"]
+                ]); // ID順に戻す
+                table.page(0);
+                table.draw();
+                window.location.reload();
             });
         });
+
+        // 削除モーダルへIDと名前を渡す
+        const deleteModal = document.getElementById('deleteModal');
+        if (deleteModal) {
+            deleteModal.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                const officeId = button.getAttribute('data-id');
+                const officeName = button.getAttribute('data-name');
+
+                document.getElementById('deleteOfficeId').value = officeId;
+                document.getElementById('deleteOfficeName').textContent = officeName;
+            });
+        }
     </script>
 </body>
 

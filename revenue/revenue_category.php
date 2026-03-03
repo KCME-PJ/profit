@@ -102,7 +102,7 @@ require_once '../includes/auth_check.php';
         </div>
     </nav>
 
-    <div class="container mt-5">
+    <div class="container mt-4">
         <?php if (isset($_SESSION['error'])): ?>
             <div class="alert alert-danger">
                 <?php echo htmlspecialchars($_SESSION['error']); ?>
@@ -111,7 +111,7 @@ require_once '../includes/auth_check.php';
         <?php endif; ?>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>収入カテゴリの登録</h4>
+            <h4 class="mb-0">収入カテゴリの登録</h4>
             <a href="revenue_category_list.php" class="btn btn-outline-secondary btn-sm">一覧に戻る</a>
         </div>
 

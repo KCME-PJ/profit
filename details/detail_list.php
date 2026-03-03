@@ -14,7 +14,7 @@ try {
     $dbh = getDb();
 
     $sql = "SELECT details.id, details.name AS detail_name, details.identifier, details.note, details.sort_order,
-                   details.account_id, details.office_id, accounts.name AS account_name, offices.name AS office_name
+                details.account_id, details.office_id, accounts.name AS account_name, offices.name AS office_name
             FROM details
             JOIN accounts ON details.account_id = accounts.id
             LEFT JOIN offices ON details.office_id = offices.id
@@ -43,12 +43,13 @@ try {
 }
 ?>
 
+<!DOCTYPE html>
 <html lang="ja">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profit index</title>
+    <title>詳細一覧 - Profit index</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
@@ -69,51 +70,38 @@ try {
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">CP
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">CP</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../cp/cp.php">CP計画</a></li>
                             <li><a class="dropdown-item" href="../cp/cp_edit.php">CP編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">見通し
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">見通し</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../forecast/forecast_edit.php">見通し編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">予定
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">予定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../plan/plan_edit.php">予定編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">月末見込み
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">月末見込み</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../outlook/outlook_edit.php">月末見込み編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">概算
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">概算</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../result/result_edit.php">概算編集</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            勘定科目設定
-                        </a>
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown">マスター設定</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="../account/account_list.php">勘定科目</a></li>
                             <li><a class="dropdown-item" href="./detail.php">詳細登録</a></li>
@@ -129,8 +117,7 @@ try {
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-person-fill"></i>&nbsp; <?= htmlspecialchars($_SESSION['display_name']) ?> さん
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
@@ -159,9 +146,12 @@ try {
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="mb-0">詳細リスト</h4>
-            <button id="resetStateBtn" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-counterclockwise"></i> 一覧を初期状態に戻す
-            </button>
+            <div>
+                <a href="detail.php" class="btn btn-primary btn-sm me-2"><i class="bi bi-plus-lg"></i> 新規登録</a>
+                <button id="resetStateBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-counterclockwise"></i> 初期状態に戻す
+                </button>
+            </div>
         </div>
 
         <table id="detailTable" class="table table-bordered table-striped">
@@ -290,9 +280,7 @@ try {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
-        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>

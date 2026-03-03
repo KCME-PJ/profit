@@ -114,7 +114,7 @@ try {
         </div>
     </nav>
 
-    <div class="container mt-5">
+    <div class="container mt-4">
         <?php if (isset($_SESSION['error'])): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                 <?php echo $_SESSION['error']; ?>
@@ -132,8 +132,13 @@ try {
         <?php endif; ?>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>収入カテゴリ一覧</h4>
-            <a href="revenue_category.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> 新規登録</a>
+            <h4 class="mb-0">収入カテゴリ一覧</h4>
+            <div>
+                <a href="revenue_category.php" class="btn btn-primary btn-sm me-2"><i class="bi bi-plus-lg"></i> 新規登録</a>
+                <button id="resetStateBtn" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-counterclockwise"></i> 初期状態に戻す
+                </button>
+            </div>
         </div>
 
         <table id="categoryTable" class="table table-bordered table-hover">
@@ -227,7 +232,7 @@ try {
 
     <script>
         $(document).ready(function() {
-            $('#categoryTable').DataTable({
+            var table = $('#categoryTable').DataTable({
                 language: {
                     url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ja.json"
                 },
@@ -236,6 +241,18 @@ try {
                     [1, "asc"]
                 ],
                 stateSave: true,
+            });
+
+            // 初期状態に戻すボタンの処理
+            $('#resetStateBtn').on('click', function() {
+                table.state.clear();
+                table.search('').columns().search('');
+                table.order([
+                    [1, "asc"]
+                ]); // デフォルトの並び順（表示順）に戻す
+                table.page(0);
+                table.draw();
+                window.location.reload();
             });
         });
 
