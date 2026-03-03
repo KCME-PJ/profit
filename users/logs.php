@@ -75,7 +75,7 @@ $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <?php echo htmlspecialchars($_SESSION['display_name']); ?> さん
                 </span>
                 <a href="index.php" class="btn btn-outline-light btn-sm me-2">ユーザー管理へ戻る</a>
-                <a href="../index.html" class="btn btn-outline-light btn-sm">ダッシュボードへ戻る</a>
+                <a href="../index.php" class="btn btn-outline-light btn-sm">ダッシュボードへ戻る</a>
             </div>
         </div>
     </nav>

@@ -274,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const title = isLabor ? '労務費' : '経費(除労務費)';
         const baseD = isLabor ? d.baseLaborData : d.baseExpenseData;
         const compD = isLabor ? d.compareLaborData : d.compareExpenseData;
-        const color = isLabor ? '255, 193, 7' : '108, 117, 125';
+        const color = isLabor ? '73, 80, 87' : '108, 117, 125';
         // ラベル変換
         const baseLabelJP = labelMap[d.baseLabel] || d.baseLabel; // ラベルマップになければそのまま
 
@@ -308,16 +308,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
         revenueStackChart.data.labels = d.labels;
 
-        const colors = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545', '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'];
+        const colorRGBs = [
+            '13, 110, 253',   // 1. Primary blue (濃い青)
+            '0, 153, 255',    // 2. Azure (青)
+            '13, 202, 240',   // 3. Info cyan (水色)
+            '0, 210, 190',    // 4. Turquoise (ターコイズ)
+            '32, 201, 151',   // 5. Teal (青緑)
+            '25, 135, 84',    // 6. Success green (緑)
+            '116, 184, 22',   // 7. Lime green (黄緑)
+            '250, 176, 5',    // 8. Yellow orange (差し色の黄)
+        ];
 
-        const datasets = d.datasets.map((ds, i) => ({
-            type: 'bar',
-            label: ds.label,
-            data: ds.data,
-            backgroundColor: colors[i % colors.length],
-            stack: 'stack1',
-            order: 2
-        }));
+        const datasets = d.datasets.map((ds, i) => {
+            const rgb = colorRGBs[i % colorRGBs.length];
+            return {
+                type: 'bar',
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: `rgba(${rgb}, 0.7)`,
+                borderColor: `rgba(${rgb}, 1)`,
+                borderWidth: 1,
+                stack: 'stack1',
+                order: 2
+            };
+        });
 
         if (currentFilters.compareName !== 'なし' && d.compareTotalData) {
             datasets.push({

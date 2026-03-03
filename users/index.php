@@ -42,7 +42,7 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <a href="logs.php" class="btn btn-outline-info btn-sm me-2">
                     <i class="bi bi-list-columns"></i> 操作ログ
                 </a>
-                <a href="../index.html" class="btn btn-outline-light btn-sm">ダッシュボードへ戻る</a>
+                <a href="../index.php" class="btn btn-outline-light btn-sm">ダッシュボードへ戻る</a>
                 <a href="../logout.php" class="btn btn-outline-danger btn-sm">ログアウト</a>
             </div>
         </div>

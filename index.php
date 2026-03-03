@@ -1,3 +1,11 @@
+<?php
+// セッションを開始して、ログイン状態だけを確認（リダイレクトはしない！）
+session_start();
+$isLoggedIn = isset($_SESSION['user_id']);
+$current_name = $isLoggedIn ? ($_SESSION['display_name'] ?? 'ゲスト') : '';
+$current_role = $isLoggedIn ? ($_SESSION['role'] ?? 'viewer') : '';
+?>
+
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -108,13 +116,19 @@
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            <i class="bi bi-box-arrow-in-right"></i>&nbsp;
-                            ログイン
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <?php if ($isLoggedIn): ?>
+                                <i class="bi bi-person-check-fill text-success"></i>&nbsp; <?= htmlspecialchars($current_name, ENT_QUOTES, 'UTF-8') ?> さん
+                            <?php else: ?>
+                                <i class="bi bi-box-arrow-in-right"></i>&nbsp; ログイン / ログアウト
+                            <?php endif; ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="./login.php">Login</a></li>
+                            <?php if ($isLoggedIn): ?>
+                                <li><a class="dropdown-item text-danger" href="./logout.php"><i class="bi bi-box-arrow-right me-2"></i>ログアウト</a></li>
+                            <?php else: ?>
+                                <li><a class="dropdown-item" href="./login.php"><i class="bi bi-box-arrow-in-right me-2"></i>ログイン</a></li>
+                            <?php endif; ?>
                         </ul>
                     </li>
                 </ul>
@@ -128,7 +142,7 @@
             <div class="card-body p-3">
                 <div class="row g-3 align-items-end">
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <label for="base-data" class="form-label small fw-medium">基準データ</label>
+                        <label for="base-data" class="form-label fw-medium">基準データ</label>
                         <select id="base-data" class="form-select form-select-sm">
                             <option value="cp" selected>CP (CP)</option>
                             <option value="forecast">見通し (Forecast)</option>
@@ -139,7 +153,7 @@
                     </div>
 
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <label for="compare-data" class="form-label small fw-medium">比較対象</label>
+                        <label for="compare-data" class="form-label fw-medium">比較対象</label>
                         <select id="compare-data" class="form-select form-select-sm">
                             <option value="none" selected>比較なし</option>
                             <option value="plan">予定 (Plan)</option>
@@ -149,14 +163,14 @@
                     </div>
 
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <label for="year-select" class="form-label small fw-medium">対象年度</label>
+                        <label for="year-select" class="form-label fw-medium">対象年度</label>
                         <select id="year-select" class="form-select form-select-sm">
                             <option value="">読込中...</option>
                         </select>
                     </div>
 
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <label for="period-type" class="form-label small fw-medium">集計単位</label>
+                        <label for="period-type" class="form-label fw-medium">集計単位</label>
                         <select id="period-type" class="form-select form-select-sm">
                             <option value="full_year">通期 (月別)</option>
                             <option value="half_year">半期 (上期/下期)</option>
@@ -165,7 +179,7 @@
                     </div>
 
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <label for="office-select" class="form-label small fw-medium">営業所</label>
+                        <label for="office-select" class="form-label fw-medium">営業所</label>
                         <select id="office-select" class="form-select form-select-sm">
                             <option value="all">全社合計</option>
                         </select>
@@ -193,42 +207,42 @@
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-revenue">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-revenue">収入合計</h6>
-                        <h4 class="text-dark mb-1" id="kpi-revenue-total">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-revenue-total">-</h5>
                         <p class="small text-muted mb-0" id="kpi-revenue-total-diff">-</p>
                     </div>
                 </div>
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-variable">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-expense">経費合計 (除労務費)</h6>
-                        <h4 class="text-dark mb-1" id="kpi-expense-total">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-expense-total">-</h5>
                         <p class="small text-muted mb-0" id="kpi-expense-total-diff">-</p>
                     </div>
                 </div>
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-marginal">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-gross">差引収益</h6>
-                        <h4 class="text-dark mb-1" id="kpi-gross-profit">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-gross-profit">-</h5>
                         <p class="small text-muted mb-0" id="kpi-gross-profit-diff">-</p>
                     </div>
                 </div>
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-fixed">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-hours">総時間</h6>
-                        <h4 class="text-dark mb-1" id="kpi-total-hours">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-total-hours">-</h5>
                         <p class="small text-muted mb-0" id="kpi-total-hours-diff">-</p>
                     </div>
                 </div>
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-profit">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-hourly">時間当たり採算</h6>
-                        <h4 class="text-dark mb-1" id="kpi-hourly-profit">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-hourly-profit">-</h5>
                         <p class="small text-muted mb-0" id="kpi-hourly-profit-diff">-</p>
                     </div>
                 </div>
                 <div class="col-lg-2 col-md-4 col-6">
                     <div class="summary-box-card border-ratio">
                         <h6 class="text-muted fw-bold mb-1" id="kpi-title-pretax">税引前利益</h6>
-                        <h4 class="text-dark mb-1" id="kpi-pretax-profit">-</h4>
+                        <h5 class="text-dark mb-1" id="kpi-pretax-profit">-</h5>
                         <p class="small text-muted mb-0" id="kpi-pretax-profit-diff">-</p>
                     </div>
                 </div>

@@ -9,7 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // 既にログイン済みならトップへリダイレクト
 if (isset($_SESSION['user_id'])) {
-    header("Location: index.html");
+    header("Location: index.php");
     exit;
 }
 
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['role']      = $user['role'];
 
             // ログイン後のリダイレクト
-            header("Location: index.html");
+            header("Location: index.php");
             exit;
         } else {
             $error = 'ユーザーIDまたはパスワードが間違っています。';
