@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($checkStmt->fetchColumn() > 0) {
             // 使われている場合はエラーにして戻す
-            $_SESSION['error'] = 'この勘定科目は「詳細」で使用されているため削除できません。<br>先に紐付いている詳細データを削除または変更してください。';
+            $_SESSION['error'] = 'この勘定科目は「詳細」で使用されているため削除できません。先に紐付いている詳細データを削除または変更してください。';
             header('Location: account_list.php');
             exit;
         }

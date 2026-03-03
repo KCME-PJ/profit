@@ -45,7 +45,7 @@ try {
             $stmtCheck->execute([':id' => $id]);
 
             if ($stmtCheck->fetchColumn() > 0) {
-                throw new Exception("この収入項目は「{$phaseName}」で使用されているため削除できません。<br>過去データを保持するため、削除ではなく名称変更などで対応してください。");
+                throw new Exception("この収入項目は「{$phaseName}」で使用されているため削除できません。過去データを保持するため、削除ではなく名称変更などで対応してください。");
             }
         } catch (PDOException $e) {
             // テーブルがまだ存在しないエラー(1146, 42S02)の場合は無視して続行

@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $checkStmt->execute();
 
         if ($checkStmt->fetchColumn() > 0) {
-            $_SESSION['error'] = 'このカテゴリは「収入項目」で使用されているため削除できません。<br>先に紐付いている収入項目を削除または変更してください。';
+            $_SESSION['error'] = 'このカテゴリは「収入項目」で使用されているため削除できません。先に紐付いている収入項目を削除または変更してください。';
             header('Location: revenue_category_list.php');
             exit;
         }
