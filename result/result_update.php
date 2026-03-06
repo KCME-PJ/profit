@@ -35,9 +35,20 @@ try {
             throw new Exception("対象データが見つかりません。");
         }
 
-        // ============================================================
-        // 依存関係チェック: Resultは最終工程なのでチェック不要
-        // ============================================================
+        // =========================================================================
+        // 依存関係チェック: Resultは最終工程なので上流フェーズのチェック (月次確定時)のみ
+        // =========================================================================
+
+        // A. 上流フェーズのチェック (月次確定時)
+        if ($actionType === 'parent_fix') {
+            $stmtCheckPrev = $dbh->prepare("SELECT status FROM monthly_outlook WHERE year = ? AND month = ? LIMIT 1");
+            $stmtCheckPrev->execute([$year, $month]);
+            $prevStatus = $stmtCheckPrev->fetchColumn();
+
+            if ($prevStatus !== 'fixed') {
+                throw new Exception("「月末見込み」が確定されていません。\n整合性を保つため、先に該当月の「月末見込み」の月次確定を行ってください。");
+            }
+        }
 
         if ($actionType === 'parent_fix') {
             // 親ステータスを fixed に

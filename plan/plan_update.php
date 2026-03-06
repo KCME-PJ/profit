@@ -37,10 +37,20 @@ try {
 
         // ============================================================
         // 依存関係チェック (Dependency Check) - 厳格版
-        // Plan操作時に、後続の Outlook が確定済みでないか厳密に確認する
         // ============================================================
 
-        // A. 親レベルのチェック (ロック解除時)
+        // A. 上流フェーズのチェック (月次確定時)
+        if ($actionType === 'parent_fix') {
+            $stmtCheckPrev = $dbh->prepare("SELECT status FROM monthly_forecast WHERE year = ? AND month = ? LIMIT 1");
+            $stmtCheckPrev->execute([$year, $month]);
+            $prevStatus = $stmtCheckPrev->fetchColumn();
+
+            if ($prevStatus !== 'fixed') {
+                throw new Exception("「見通し」が確定されていません。\n整合性を保つため、先に該当月の「見通し」の月次確定を行ってください。");
+            }
+        }
+
+        // B. 下流(親)レベルのチェック (ロック解除時)
         if ($actionType === 'parent_unlock') {
             // 1. Outlookの親データを取得
             $stmtCheckNext = $dbh->prepare("SELECT id, status FROM monthly_outlook WHERE year = ? AND month = ? LIMIT 1");
@@ -64,7 +74,7 @@ try {
             }
         }
 
-        // B. 営業所レベルのチェック (差し戻し時)
+        // C. 営業所レベルのチェック (差し戻し時)
         if ($actionType === 'reject') {
             $targetOfficeId = $_POST['target_office_id'] ?? null;
             if (!$targetOfficeId) {
