@@ -7,6 +7,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const isAdmin = (userRole === 'admin');
     const isViewer = (userRole === 'viewer');
 
+    // 画面読み込み直後のURLパラメータを記憶しておく
+    const initialUrlParams = new URLSearchParams(window.location.search);
+    const hasInitialError = initialUrlParams.has('error');
+    const hasInitialSuccess = initialUrlParams.has('success');
+
     // ----------------------------------------------------------------
     // DOM要素の取得
     // ----------------------------------------------------------------
@@ -27,7 +32,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Admin Controls
     const adminParentControls = document.getElementById('adminParentControls');
-    // 画面上のトリガーボタンのIDを正しく取得 (Confirmボタンではない)
     const btnParentFix = document.getElementById('btnParentFix');
     const btnParentUnlock = document.getElementById('btnParentUnlock');
     const parentFixedLabel = document.getElementById('parentFixedLabel');
@@ -239,7 +243,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     if (btnParentFix) {
                         btnParentFix.style.display = showParentBtns ? 'inline-block' : 'none';
-                        // 全ての営業所が確定済みで、かつデータが存在する場合のみ押せる
                         btnParentFix.disabled = !isAllFixedGlobal || !hasData;
                     }
                     if (btnParentUnlock) btnParentUnlock.style.display = 'none';
@@ -336,7 +339,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const rowOfficeId = row.getAttribute('data-office-id');
             const isMatch = (selectedOfficeId === 'all' || rowOfficeId === 'common' || rowOfficeId === selectedOfficeId);
 
-            // 入力欄の無効化（Admin、Viewer）
             if (isMatch) {
                 row.style.display = '';
                 const isGloballyDisabled = document.getElementById('standardHours').disabled;
@@ -545,11 +547,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (document.getElementById('cpRejectConfirmBtn')) document.getElementById('cpRejectConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('reject'); });
     if (document.getElementById('cpParentFixConfirmBtn')) document.getElementById('cpParentFixConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('parent_fix'); });
     if (document.getElementById('cpParentUnlockConfirmBtn')) document.getElementById('cpParentUnlockConfirmBtn').addEventListener('click', function () { prepareAndSubmitForm('parent_unlock'); });
+
     if (officeSelect) {
         officeSelect.addEventListener('change', () => {
             if (!monthSelect.value) { alert("月を選択してください。"); officeSelect.value = currentOfficeId || 'all'; return; }
 
-            // Adminでなければチェック
             if (!isAdmin) {
                 if (initialFormData !== "") {
                     const currentFormData = getFormDataString();
@@ -568,30 +570,33 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!officeTimeDataLocal[currentOfficeId]) officeTimeDataLocal[currentOfficeId] = {};
                 officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
             }
-            const errorAlert = getOrCreateErrorAlert(); if (errorAlert) errorAlert.innerHTML = '';
             const myOfficeData = officeTimeDataLocal[currentOfficeId];
             const hasParentData = document.getElementById('monthlyCpId') && document.getElementById('monthlyCpId').value;
 
-            // Adminでも「その営業所のデータが無い」場合はアラートを出す (inputsはdisableしない)
+            // 営業所切り替え時の未登録アラート（PHPエラーがない時のみ表示）
+            const errorAlert = getOrCreateErrorAlert();
             if (currentOfficeId !== 'all' && hasParentData && !myOfficeData) {
-                if (errorAlert) {
+                if (errorAlert && !hasInitialError) {
+                    errorAlert.className = 'alert alert-warning d-flex align-items-center mt-5 position-relative';
+                    errorAlert.style.zIndex = '1050';
                     errorAlert.innerHTML = `
-                        <div class="alert alert-warning d-flex align-items-center" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            <div>
-                                <strong>データ未登録</strong><br>
-                                この営業所のデータはまだ登録されていません。<br>
-                                <a href="../cp/cp.php?year=${yearSelect.value}&month=${monthSelect.value}" class="alert-link">CP計画画面（新規登録）</a> から登録を行ってください。
-                            </div>
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <strong>データ未登録</strong><br>
+                            この営業所のデータはまだ登録されていません。<br>
+                            <a href="../cp/cp.php?year=${yearSelect.value}&month=${monthSelect.value}" class="alert-link">CP計画画面（新規登録）</a> から登録を行ってください。
                         </div>`;
                 }
-                // Adminならdisableしない
                 if (!isAdmin) {
                     disableAllInputs();
                 } else {
-                    renderOfficeToDom(currentOfficeId); // Adminは見れるように
+                    renderOfficeToDom(currentOfficeId);
                 }
             } else {
+                if (errorAlert && !hasInitialError) {
+                    errorAlert.innerHTML = '';
+                    errorAlert.className = '';
+                }
                 renderOfficeToDom(currentOfficeId);
             }
             filterDetailsByOffice(); updateButtonState(); initialFormData = getFormDataString();
@@ -699,23 +704,33 @@ document.addEventListener('DOMContentLoaded', function () {
             resetInputFields();
             currentOfficeId = officeSelect ? officeSelect.value : null;
 
-            const requestParams = new URLSearchParams(window.location.search);
-
+            // ユーザーによるクリック操作なら、以前のエラー文を消す
             if (e.isTrusted) {
                 const errorAlert = document.getElementById('errorAlert');
                 if (errorAlert) { errorAlert.innerHTML = ''; errorAlert.className = ''; }
+                const successAlert = document.getElementById('successAlert');
+                if (successAlert) { successAlert.innerHTML = ''; successAlert.className = ''; }
             }
+
             fetch(`cp_edit_load.php?year=${year}&month=${month}`).then(response => response.json()).then(data => {
                 if (data.error) throw new Error(data.error);
 
                 const errorAlert = getOrCreateErrorAlert();
-                if (errorAlert) {
-                    if (e.isTrusted || !requestParams.has('error')) { errorAlert.innerHTML = ''; errorAlert.className = ''; }
+
+                // 初回ロードでエラーがなく、かつユーザー操作でない場合はクリアを許可
+                if (errorAlert && !hasInitialError && !e.isTrusted) {
+                    errorAlert.innerHTML = ''; errorAlert.className = '';
                 }
+
                 if (!data.monthly_cp_id) {
-                    if (errorAlert) errorAlert.innerHTML = `<div class="alert alert-secondary d-flex align-items-center" role="alert"><i class="bi bi-info-circle-fill me-2"></i><div><strong>この月はまだ登録されていません。</strong></div></div>`;
+                    if (errorAlert && (e.isTrusted || !hasInitialError)) {
+                        errorAlert.className = 'alert alert-secondary d-flex align-items-center mt-5 position-relative';
+                        errorAlert.style.zIndex = '1050';
+                        errorAlert.innerHTML = `<i class="bi bi-info-circle-fill me-2"></i><div><strong>この月はまだ登録されていません。</strong></div>`;
+                    }
                     disableAllInputs(); return;
                 }
+
                 officeTimeDataLocal = data.offices || {};
                 if (document.getElementById('monthlyCpId')) document.getElementById('monthlyCpId').value = data.monthly_cp_id ?? '';
                 if (document.getElementById('cpStatus')) document.getElementById('cpStatus').value = data.status ?? '';
@@ -742,28 +757,26 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 const myOfficeData = officeTimeDataLocal[currentOfficeId];
 
-                // 親データはあるが、自営業所のデータが無い場合
                 if (currentOfficeId !== 'all' && !myOfficeData) {
-                    if (errorAlert) {
+                    if (errorAlert && (e.isTrusted || !hasInitialError)) {
                         const year = yearSelect.value;
                         const month = monthSelect.value;
+                        errorAlert.className = 'alert alert-warning d-flex align-items-center mt-5 position-relative';
+                        errorAlert.style.zIndex = '1050';
                         errorAlert.innerHTML = `
-                        <div class="alert alert-warning d-flex align-items-center" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            <div>
-                                <strong>データ未登録</strong><br>
-                                この営業所のデータはまだ登録されていません。<br>
-                                <a href="../cp/cp.php?year=${year}&month=${month}" class="alert-link">CP計画画面（新規登録）</a> から登録を行ってください。
-                            </div>
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <strong>データ未登録</strong><br>
+                            この営業所のデータはまだ登録されていません。<br>
+                            <a href="../cp/cp.php?year=${year}&month=${month}" class="alert-link">CP計画画面（新規登録）</a> から登録を行ってください。
                         </div>`;
                     }
-                    // Adminならdisableしない
                     if (!isAdmin) {
                         disableAllInputs();
                         renderOfficeToDom(currentOfficeId);
                         return;
                     } else {
-                        renderOfficeToDom(currentOfficeId); // Adminは見れるように
+                        renderOfficeToDom(currentOfficeId);
                     }
                 } else {
                     renderOfficeToDom(currentOfficeId);
@@ -782,12 +795,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 initDirtyCheck(); filterDetailsByOffice();
-                // requestParamsを使用
-                if (requestParams.has('error') && !isAdmin) restoreFormData(); else if (requestParams.has('success')) clearBackup();
+
+                // 初回URLパラメータを使って復元処理を判断
+                if (!e.isTrusted) {
+                    if (hasInitialError && !isAdmin) restoreFormData();
+                    else if (hasInitialSuccess) clearBackup();
+                }
             }).catch(error => { console.error('データ読み込みエラー:', error); alert('データの読み込みに失敗しました。'); resetInputFields(); });
         });
     }
 
+    // --- URLクリーナー ---
     if (window.history.replaceState) {
         const url = new URL(window.location.href);
         if (url.searchParams.has('error') || url.searchParams.has('success') || url.searchParams.has('msg')) {
