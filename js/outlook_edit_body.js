@@ -7,6 +7,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const isAdmin = (userRole === 'admin');
     const isViewer = (userRole === 'viewer');
 
+    // 画面読み込み直後のURLパラメータを記憶しておく
+    const initialUrlParams = new URLSearchParams(window.location.search);
+    const hasInitialError = initialUrlParams.has('error');
+    const hasInitialSuccess = initialUrlParams.has('success');
+
     // ----------------------------------------------------------------
     // DOM要素の取得
     // ----------------------------------------------------------------
@@ -587,16 +592,31 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!officeTimeDataLocal[currentOfficeId]) officeTimeDataLocal[currentOfficeId] = {};
                 officeTimeDataLocal[currentOfficeId].hourly_rate = parseFloat(currentRate);
             }
-            const errorAlert = getOrCreateErrorAlert(); if (errorAlert) errorAlert.innerHTML = '';
-            const myOfficeData = officeTimeDataLocal[currentOfficeId];
-            const hasParentData = document.getElementById('monthlyOutlookId') && document.getElementById('monthlyOutlookId').value;
+            const errorAlert = getOrCreateErrorAlert();
+            if (errorAlert) {
+                errorAlert.innerHTML = '';
+                errorAlert.className = ''; // クラス（ピンクの背景色など）を削除
+                errorAlert.removeAttribute('style'); // 余計なスタイルをクリア
+            }
 
-            // Adminでも「その営業所のデータが無い」場合はアラートを出す (inputsはdisableしない)
+            const myOfficeData = officeTimeDataLocal[currentOfficeId];
+            const parentIdInput = document.getElementById('monthlyOutlookId');
+            const hasParentData = parentIdInput && parentIdInput.value;
+
+            // Adminでも「その営業所のデータが無い」場合はアラートを出す
             if (currentOfficeId !== 'all' && hasParentData && !myOfficeData) {
                 if (errorAlert) {
-                    errorAlert.innerHTML = `<div class="alert alert-warning d-flex align-items-center" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i><div><strong>データ未登録</strong><br>この営業所のデータはまだ登録されていません。</div></div>`;
+                    // 黄色い警告の帯として再設定
+                    errorAlert.className = 'alert alert-warning d-flex align-items-center mt-5 position-relative';
+                    errorAlert.style.zIndex = '1050';
+                    errorAlert.innerHTML = `
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <strong>データ未登録</strong><br>
+                            この営業所のデータはまだ登録されていません。
+                        </div>
+                    `;
                 }
-                // Adminならdisableしない
                 if (!isAdmin) {
                     disableAllInputs();
                 } else {
@@ -716,18 +736,29 @@ document.addEventListener('DOMContentLoaded', function () {
             if (e.isTrusted) {
                 const errorAlert = document.getElementById('errorAlert');
                 if (errorAlert) { errorAlert.innerHTML = ''; errorAlert.className = ''; }
+                const successAlert = document.getElementById('successAlert');
+                if (successAlert) { successAlert.innerHTML = ''; successAlert.className = ''; }
             }
+
             fetch(`outlook_edit_load.php?year=${year}&month=${month}`).then(response => response.json()).then(data => {
                 if (data.error) throw new Error(data.error);
 
                 const errorAlert = getOrCreateErrorAlert();
-                if (errorAlert) {
-                    if (e.isTrusted || !requestParams.has('error')) { errorAlert.innerHTML = ''; errorAlert.className = ''; }
+
+                // 初回ロードでエラーがなく、かつユーザー操作でない場合はクリアを許可
+                if (errorAlert && !hasInitialError && !e.isTrusted) {
+                    errorAlert.innerHTML = ''; errorAlert.className = '';
                 }
+
                 if (!data.monthly_outlook_id) {
-                    if (errorAlert) errorAlert.innerHTML = `<div class="alert alert-secondary d-flex align-items-center" role="alert"><i class="bi bi-info-circle-fill me-2"></i><div><strong>この月はまだ登録されていません。</strong></div></div>`;
+                    if (errorAlert && (e.isTrusted || !hasInitialError)) {
+                        errorAlert.className = 'alert alert-secondary d-flex align-items-center mt-5 position-relative';
+                        errorAlert.style.zIndex = '1050';
+                        errorAlert.innerHTML = `<i class="bi bi-info-circle-fill me-2"></i><div><strong>この月はまだ登録されていません。</strong></div>`;
+                    }
                     disableAllInputs(); return;
                 }
+
                 officeTimeDataLocal = data.offices || {};
                 if (document.getElementById('monthlyOutlookId')) document.getElementById('monthlyOutlookId').value = data.monthly_outlook_id ?? '';
                 if (document.getElementById('olStatus')) document.getElementById('olStatus').value = data.status ?? '';
@@ -756,8 +787,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // 親データはあるが、自営業所のデータが無い場合
                 if (currentOfficeId !== 'all' && !myOfficeData) {
-                    if (errorAlert) errorAlert.innerHTML = `<div class="alert alert-warning d-flex align-items-center" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i><div><strong>データ未登録</strong><br>この営業所のデータはまだ登録されていません。</div></div>`;
-                    // Adminならdisableしない
+                    if (errorAlert && (e.isTrusted || !hasInitialError)) {
+                        const year = yearSelect.value;
+                        const month = monthSelect.value;
+                        errorAlert.className = 'alert alert-warning d-flex align-items-center mt-5 position-relative';
+                        errorAlert.style.zIndex = '1050';
+                        errorAlert.innerHTML = `
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <strong>データ未登録</strong><br>
+                            この営業所のデータはまだ登録されていません。<br>
+                            <a href="../cp/cp.php?year=${year}&month=${month}" class="alert-link">CP計画画面（新規登録）</a> から登録を行ってください。
+                        </div>`;
+                    }
                     if (!isAdmin) {
                         disableAllInputs();
                         renderOfficeToDom(currentOfficeId);
@@ -782,8 +824,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 initDirtyCheck(); filterDetailsByOffice();
-                // requestParamsを使用
-                if (requestParams.has('error') && !isAdmin) restoreFormData(); else if (requestParams.has('success')) clearBackup();
+
+                // 初回URLパラメータを使って復元処理を判断
+                if (!e.isTrusted) {
+                    if (hasInitialError && !isAdmin) restoreFormData();
+                    else if (hasInitialSuccess) clearBackup();
+                }
             }).catch(error => { console.error('データ読み込みエラー:', error); alert('データの読み込みに失敗しました。'); resetInputFields(); });
         });
     }
