@@ -177,7 +177,6 @@ function updateMonthlyForecast(array $data, PDO $dbh)
     logAudit($dbh, 'forecast', $monthly_forecast_id, 'update', $logData);
 }
 
-// ... (残りの関数は変更なしのため省略します。ファイル保存時は既存の関数を残してください) ...
 function fixParentForecast(int $monthly_forecast_id, PDO $dbh)
 {
     // 1. ステータスを Fixed に
