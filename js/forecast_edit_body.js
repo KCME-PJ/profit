@@ -394,7 +394,8 @@ document.addEventListener('DOMContentLoaded', function () {
             isChildFixed = true;
         }
 
-        const shouldDisable = isAdmin || isViewer || lockedStatuses.includes(parentStatus) || isChildFixed;
+        const isNotRegistered = !parentStatus || parentStatus === 'none';
+        const shouldDisable = isAdmin || isViewer || lockedStatuses.includes(parentStatus) || isChildFixed || isNotRegistered;
 
         if (oid === 'all') {
             let totals = { standard_hours: 0, overtime_hours: 0, transferred_hours: 0, fulltime_count: 0, contract_count: 0, dispatch_count: 0 };
