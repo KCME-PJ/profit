@@ -83,10 +83,8 @@ try {
             $month = $parts[1];
 
             // 1. 親テーブルID取得
+            // 全フェーズ共通で親テーブルから hourly_rate を取得
             $sqlParent = "SELECT id, hourly_rate FROM " . $tablePrefix . " WHERE year = :year AND month = :month AND status = 'fixed'";
-            if ($sourceType === 'cp') {
-                $sqlParent = "SELECT id, 0 as hourly_rate FROM " . $tablePrefix . " WHERE year = :year AND month = :month AND status = 'fixed'";
-            }
 
             $stmt = $dbh->prepare($sqlParent);
             $stmt->execute([':year' => $year, ':month' => $month]);
@@ -227,7 +225,8 @@ try {
 
 
             // --- C. 時間・人員集計 (Time) ---
-            $rateCol = ($sourceType === 'cp') ? 't.hourly_rate' : ':base_rate';
+            // 全フェーズ共通で親の賃率(:base_rate)を使用
+            $rateCol = ':base_rate';
             $timeFkColumn = 'monthly_' . $sourceType . '_id';
 
             // 1. 詳細表示用：営業所ごとの集計
@@ -252,9 +251,7 @@ try {
             ";
 
             $paramsTimeDetails = array_merge([':pid' => $parentId], $paramsBase);
-            if ($sourceType !== 'cp') {
-                $paramsTimeDetails[':base_rate'] = $baseHourlyRate;
-            }
+            $paramsTimeDetails[':base_rate'] = $baseHourlyRate;
 
             $stmtTimeDetails = $dbh->prepare($sqlTimeDetails);
             $stmtTimeDetails->execute($paramsTimeDetails);
@@ -322,9 +319,8 @@ try {
             ";
 
             $paramsTime = array_merge([':pid' => $parentId], $paramsBase);
-            if ($sourceType !== 'cp') {
-                $paramsTime[':base_rate'] = $baseHourlyRate;
-            }
+            $paramsTime[':base_rate'] = $baseHourlyRate;
+
             $stmtTime = $dbh->prepare($sqlTime);
             $stmtTime->execute($paramsTime);
             $timeData = $stmtTime->fetch(PDO::FETCH_ASSOC);

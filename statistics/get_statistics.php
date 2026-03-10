@@ -90,9 +90,8 @@ try {
 
                 foreach ($statusesToTry as $status) {
                     // 親データ取得
-                    // ★修正: 親テーブルには office_id が無いのでフィルタしない
-                    $rateColParent = ($tablePrefix === 'cp') ? "0 AS hourly_rate" : "hourly_rate";
-                    $sqlParent = "SELECT id, $rateColParent FROM $parentTable 
+                    // 全フェーズ共通で親テーブルから hourly_rate を取得
+                    $sqlParent = "SELECT id, hourly_rate FROM $parentTable 
                                     WHERE year = :year AND month = :month AND status = :status";
 
                     $stmtParent = $dbh->prepare($sqlParent);
@@ -105,15 +104,13 @@ try {
                         $hourlyRate = (float)($parentData['hourly_rate'] ?? 0);
 
                         // Time集計
-                        $rateCol = ($tablePrefix === 'cp') ? 't.hourly_rate' : ':hourly_rate';
+                        // 全フェーズ共通で親の賃率(:hourly_rate)を使用
+                        $rateCol = ':hourly_rate';
 
                         // パラメータ結合 (親ID + 営業所ID)
                         $paramsTime = $params;
                         $paramsTime[':parent_id'] = $parentId;
-
-                        if ($tablePrefix !== 'cp') {
-                            $paramsTime[':hourly_rate'] = $hourlyRate;
-                        }
+                        $paramsTime[':hourly_rate'] = $hourlyRate;
 
                         $typeFilterTime = ($tablePrefix === 'cp') ? " AND t.type = 'cp'" : "";
 
@@ -146,7 +143,6 @@ try {
                         $detailsSum = $stmtDetails->fetchAll(PDO::FETCH_KEY_PAIR);
 
                         // 収入集計
-                        // ★修正: 収入も営業所で絞り込む
                         $paramsRevenues = $params;
                         $paramsRevenues[':parent_id'] = $parentId;
 
