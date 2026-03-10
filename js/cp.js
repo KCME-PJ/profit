@@ -116,13 +116,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateStatusButtons(statusMap) {
-        const buttons = document.querySelectorAll('.col-md-10 button.btn-sm');
+        const buttons = document.querySelectorAll('.month-btn');
         buttons.forEach(btn => {
             const txt = btn.textContent.trim();
             const month = parseInt(txt.replace('月', ''));
-            if (!isNaN(month) && statusMap[month]) {
-                const status = statusMap[month];
-                btn.className = 'btn btn-sm me-1 mb-1';
+            if (!isNaN(month)) {
+                const status = statusMap[month] || 'none';
+                btn.className = 'btn btn-sm me-1 mb-1 month-btn';
                 if (status === 'fixed') {
                     btn.classList.add('btn-success');
                 } else if (status === 'draft') {
@@ -339,6 +339,19 @@ document.addEventListener('DOMContentLoaded', function () {
             window.history.replaceState({}, document.title, url.pathname + url.search);
         });
     }
+
+    // 月ボタンをクリックしたときの連動処理 ---
+    document.querySelectorAll('.month-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const selectedMonth = this.getAttribute('data-month');
+            if (selectedMonth && monthSelect) {
+                // プルダウンの値を変更
+                monthSelect.value = selectedMonth;
+                // 値が変わったことをシステムに通知（登録ボタンの活性/非活性判定などを実行させる）
+                monthSelect.dispatchEvent(new Event('change'));
+            }
+        });
+    });
 
     renderOfficeTime(currentOfficeId);
     filterDetailsByOffice();

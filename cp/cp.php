@@ -310,7 +310,7 @@ try {
                         $status = $cpStatusList[$month] ?? 'none';
                         $colorClass = $statusColors[$status] ?? 'secondary';
                     ?>
-                        <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1" disabled><?= $month ?>月</button>
+                        <button type="button" class="btn btn-<?= $colorClass ?> btn-sm me-1 mb-1 month-btn" data-month="<?= $month ?>"><?= $month ?>月</button>
                     <?php endfor; ?>
                 </div>
             </div>
