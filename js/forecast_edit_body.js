@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const pkg = JSON.parse(json);
             const current = pkg.current;
-            const initial = pkg.initial ? JSON.parse(pkg.initial) : { officeTimeDataLocal: {}, inputs: {} };
+            const initial = pkg.initial ? JSON.parse(pkg.initial) : {};
             const initialTimeData = initial.officeTimeDataLocal || {};
 
             if (current.activeOfficeId && officeSelect) {
@@ -158,9 +158,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (current.inputs) {
                 for (const [key, value] of Object.entries(current.inputs)) {
-                    let input = document.querySelector(`[name="${key}"]`);
-                    if (!input) input = document.getElementById(key);
-                    if (input) input.value = value;
+                    // 初期値と比較し、ユーザーが手動で変更した項目（差分）だけを復元する
+                    const initialValue = initial[key] !== undefined ? initial[key] : '';
+                    if (String(value) !== String(initialValue)) {
+                        let input = document.querySelector(`[name="${key}"]`);
+                        if (!input) input = document.getElementById(key);
+                        if (input) input.value = value;
+                    }
                 }
             }
             updateTotals();
@@ -170,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const errorAlert = getOrCreateErrorAlert();
             if (errorAlert) {
                 const msg = document.createElement('div');
-                msg.innerHTML = '<strong>※入力内容を復元し、最新データと統合しました。<br>内容を確認して再度保存してください。</strong>';
+                msg.innerHTML = '<strong>※入力内容を復元し、最新データと統合しました。<br>内容を確認して再度「修正」ボタンを押してください。</strong>';
                 msg.className = 'mt-2 text-dark bg-warning-subtle p-2 rounded border border-warning';
                 errorAlert.appendChild(msg);
             }

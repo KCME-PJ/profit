@@ -67,7 +67,7 @@ function updateMonthlyResult(array $data, PDO $dbh)
 
     // JS側でupdated_atが空で送られてくる初回保存時などはスキップ
     if ($inputUpdatedAt !== '' && $dbUpdatedAt && $inputUpdatedAt != $dbUpdatedAt) {
-        throw new Exception("他のユーザーによってデータが更新されました。画面をリロードしてください。");
+        throw new Exception("他のユーザーによってデータが更新されました。");
     }
 
     // ----------------------------

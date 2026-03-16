@@ -104,25 +104,51 @@ function updateMonthlyCp(array $data, PDO $dbh, array $userContext = [])
 
     if (!$targetOfficeId) throw new Exception("更新対象の営業所が特定できません。");
 
-    // 1. 存在確認
-    $stmtCheck = $dbh->prepare("SELECT id FROM monthly_cp_time WHERE monthly_cp_id = ? AND office_id = ? AND type = 'cp'");
-    $stmtCheck->execute([$monthly_cp_id, $targetOfficeId]);
-    $existingId = $stmtCheck->fetchColumn();
+    // ----------------------------
+    // 1. 排他制御 & 親ステータスチェック
+    // ----------------------------
+    $stmtParentCheck = $dbh->prepare("SELECT status, hourly_rate, updated_at FROM monthly_cp WHERE id = ? FOR UPDATE");
+    $stmtParentCheck->execute([$monthly_cp_id]);
+    $currentParentData = $stmtParentCheck->fetch(PDO::FETCH_ASSOC);
 
-    if (!$existingId) {
+    if (!$currentParentData) {
+        throw new Exception("対象のデータが見つかりません。");
+    }
+
+    // 親がFixedなら更新不可（Unlockを除く）
+    if (($currentParentData['status'] ?? '') === 'fixed') {
+        throw new Exception("この月は全体確定済みのため、修正できません。");
+    }
+
+    // タイムスタンプ比較（排他制御）
+    $inputUpdatedAt = $data['updated_at'] ?? '';
+    $dbUpdatedAt    = $currentParentData['updated_at'];
+
+    // JS側でupdated_atが空で送られてくる初回保存時などはスキップ
+    if ($inputUpdatedAt !== '' && $dbUpdatedAt && $inputUpdatedAt != $dbUpdatedAt) {
+        throw new Exception("他のユーザーによってデータが更新されました。");
+    }
+
+    // ----------------------------
+    // 2. 子テーブル存在・ステータス確認
+    // ----------------------------
+    $stmtCheck = $dbh->prepare("SELECT id, status FROM monthly_cp_time WHERE monthly_cp_id = ? AND office_id = ? AND type = 'cp'");
+    $stmtCheck->execute([$monthly_cp_id, $targetOfficeId]);
+    $childData = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+    if (!$childData) {
         throw new Exception("更新対象のデータが存在しません。先に新規登録を行ってください。");
     }
 
-    // 2. ステータスチェック
-    $stmtStatus = $dbh->prepare("SELECT status FROM monthly_cp_time WHERE id = ?");
-    $stmtStatus->execute([$existingId]);
-    $currentStatus = $stmtStatus->fetchColumn();
-
-    if ($currentStatus === 'fixed' && ($data['action_type'] ?? '') !== 'unlock') {
+    if ($childData['status'] === 'fixed' && ($data['action_type'] ?? '') !== 'unlock') {
         throw new Exception("確定済みのため修正できません。");
     }
 
-    // 3. 時間データ更新 (安全に取り出す)
+    $existingId = $childData['id'];
+
+    // ----------------------------
+    // 3. データ更新処理
+    // ----------------------------
     $officeTimeData = $data['officeTimeData'] ?? [];
     $myTimeData = [];
     if (isset($officeTimeData[$targetOfficeId])) {
@@ -131,7 +157,7 @@ function updateMonthlyCp(array $data, PDO $dbh, array $userContext = [])
         $myTimeData = $officeTimeData[(string)$targetOfficeId];
     }
 
-    // 親テーブル(monthly_cp)の賃率を更新
+    // 親テーブル(monthly_cp)の賃率とタイムスタンプを更新
     $hourly_rate_common = (float)($data['hourly_rate'] ?? 0);
     $dbh->prepare("UPDATE monthly_cp SET hourly_rate = ?, updated_at = NOW() WHERE id = ?")->execute([$hourly_rate_common, $monthly_cp_id]);
 
@@ -312,7 +338,7 @@ function reflectToForecastSingleOffice($cpId, $officeId, $dbh)
 }
 
 // ---------------------------------------------------------
-// 内部用 実働部隊関数
+// 内部用関数
 // ---------------------------------------------------------
 function insertCpTimeOnly($data, $dbh)
 {
