@@ -1,0 +1,42 @@
+services:
+  web:
+    build: .  # 同じフォルダのDockerfileを元にビルドする
+    restart: unless-stopped  # PC起動時に自動で立ち上げる
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+      - mailpit
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped  # PC起動時に自動で立ち上げる
+    ports:
+      - "3306:3306"  # PC側にMySQLがインストールされている場合は「3307:3306」などに変更してください
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: profit
+    volumes:
+      - db_data:/var/lib/mysql
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"  # SMTPポート（PHP側からメールを送る際の設定先：mailpit:1025）
+      - "8025:8025"  # 管理画面（ブラウザで localhost:8025 で開く）
+    restart: unless-stopped  # PC起動時に自動で立ち上げる
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: unless-stopped  # PC起動時に自動で立ち上げる
+    ports:
+      - "8080:80"  # ブラウザで localhost:8080 で開く
+    environment:
+      PMA_HOST: db
+    depends_on:
+      - db
+
+volumes:
+  db_data:
